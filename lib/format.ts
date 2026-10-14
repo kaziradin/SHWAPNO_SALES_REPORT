@@ -1,0 +1,45 @@
+// Bangladeshi money convention: crore (1e7) and lakh (1e5).
+export function taka(v: number | null | undefined, digits = 2): string {
+  if (v == null) return "–";
+  const a = Math.abs(v);
+  if (a >= 1e7) return `৳${(v / 1e7).toFixed(digits)} Cr`;
+  if (a >= 1e5) return `৳${(v / 1e5).toFixed(digits)} L`;
+  return `৳${Math.round(v).toLocaleString("en-IN")}`;
+}
+
+export function int(v: number | null | undefined): string {
+  return v == null ? "–" : Math.round(v).toLocaleString("en-IN");
+}
+
+export function pct(v: number | null | undefined, digits = 1): string {
+  return v == null || !isFinite(v) ? "–" : `${(v * 100).toFixed(digits)}%`;
+}
+
+export function signedPct(v: number | null | undefined, digits = 1): string {
+  if (v == null || !isFinite(v)) return "–";
+  return `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v * 100).toFixed(digits)}%`;
+}
+
+/** Percentage-point difference for ratios such as GP%. */
+export function pp(v: number | null | undefined, digits = 2): string {
+  if (v == null || !isFinite(v)) return "–";
+  return `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v * 100).toFixed(digits)} pp`;
+}
+
+export function growth(now: number | null | undefined, last: number | null | undefined): number | null {
+  if (now == null || last == null || last === 0) return null;
+  return now / last - 1;
+}
+
+export function diff(now: number | null | undefined, last: number | null | undefined): number | null {
+  return now == null || last == null ? null : now - last;
+}
+
+export function titleCase(s: string): string {
+  return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()).replace("Merchandis", "Merchandise");
+}
+
+export function longDate(iso: string): string {
+  const d = new Date(iso + "T00:00:00");
+  return isNaN(d.getTime()) ? iso : d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
+}
