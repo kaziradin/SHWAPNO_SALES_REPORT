@@ -1,6 +1,6 @@
 @echo off
 rem Refresh the dashboard after replacing "1. SALES FILE\Business Performance Report.xlsx".
-rem Reads the Excel file, updates data\report.json and pushes it to GitHub (Vercel redeploys automatically).
+rem Reads the Excel file, updates data\report.json and pushes it to GitHub (the Pages workflow redeploys).
 cd /d "%~dp0"
 set "PATH=C:\Program Files\nodejs;C:\Program Files\Git\cmd;%PATH%"
 
@@ -12,7 +12,8 @@ for /f %%d in ('python -c "import json;print(json.load(open('data/report.json',e
 git commit -m "Data update till %ASOF%" || goto :fail
 git push || goto :fail
 echo.
-echo Pushed. Vercel will publish the new numbers in about a minute.
+echo Pushed. GitHub Pages will publish the new numbers in about 2 minutes:
+echo https://kaziradin.github.io/SHWAPNO_SALES_REPORT/
 goto :done
 
 :fail

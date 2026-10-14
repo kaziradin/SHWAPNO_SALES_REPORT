@@ -16,7 +16,8 @@ Each tab can be compared with **SPLY** (same period last year) or **SPLM** (same
 2. Double-click **`update.bat`**.
 
 `update.bat` runs `scripts/extract.py`, which reads the workbook's cached values into `data/report.json`.
-It then commits and pushes that file, and Vercel rebuilds the site.
+It then commits and pushes that file. The GitHub Actions workflow (`.github/workflows/pages.yml`) rebuilds the site and publishes it to
+**https://kaziradin.github.io/SHWAPNO_SALES_REPORT/**.
 
 ## Local development
 
