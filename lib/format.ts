@@ -43,3 +43,22 @@ export function longDate(iso: string): string {
   const d = new Date(iso + "T00:00:00");
   return isNaN(d.getTime()) ? iso : d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
 }
+
+/* ---- Overview formats: full figures, no currency sign or Cr/L abbreviations ---- */
+
+/** 1,445,503,760 (Western grouping, no decimals) */
+export function full(v: number | null | undefined): string {
+  return v == null || !isFinite(v) ? "–" : Math.round(v).toLocaleString("en-US");
+}
+
+/** +345,445,366 / −3,696,821 */
+export function signedFull(v: number | null | undefined): string {
+  if (v == null || !isFinite(v)) return "–";
+  const r = Math.round(v);
+  return `${r > 0 ? "+" : r < 0 ? "−" : ""}${Math.abs(r).toLocaleString("en-US")}`;
+}
+
+export function monthName(ym: string): string {
+  const [y, m] = ym.split("-").map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+}

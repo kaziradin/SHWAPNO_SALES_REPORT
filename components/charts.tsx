@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 /** Render charts at their real pixel width so text stays 11px instead of scaling with the viewBox. */
-function useWidth(fallback = 640) {
+export function useWidth(fallback = 640) {
   const ref = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(fallback);
   useEffect(() => {
@@ -27,6 +27,12 @@ export function useTooltip() {
     setTip({ x, y: e.clientY + pad, title, rows });
   };
   const hide = () => setTip(null);
+  // the tooltip is position: fixed, so drop it when the page scrolls under the pointer
+  useEffect(() => {
+    if (!tip) return;
+    window.addEventListener("scroll", hide, { passive: true });
+    return () => window.removeEventListener("scroll", hide);
+  }, [tip]);
   const node = tip ? (
     <div className="tip" style={{ left: tip.x, top: tip.y }} role="tooltip">
       <b>{tip.title}</b>

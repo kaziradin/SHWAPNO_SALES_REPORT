@@ -1,32 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { Cat3Row, Metrics, Outlet, Report, SegmentKey } from "@/lib/types";
+import type { Cat3Row, Metrics, MonthOverview, Outlet, Report, SegmentKey } from "@/lib/types";
 import { diff, growth, int, longDate, pct, pp, signedPct, taka, titleCase } from "@/lib/format";
-import { DivergingBars, PairedBars, type TipRow } from "./charts";
+import { DivergingBars, type TipRow } from "./charts";
+import FilterBar, { CMP_LABEL, SEGMENT_LABELS, type Cmp } from "./FilterBar";
+import Overview from "./Overview";
 
-type Cmp = "sply" | "splm";
 type Tab = "overview" | "divisions" | "heads" | "outlets" | "categories";
 
-const SEGMENT_LABELS: Record<SegmentKey, string> = {
-  all: "All stores",
-  own: "Own stores",
-  franchise: "Franchise stores",
-  same: "Same stores",
-  ownSame: "Own same stores",
-  franchiseSame: "Franchise same stores",
-  newOwn: "New own stores",
-  newFranchise: "New franchise",
-};
-const CMP_LABEL: Record<Cmp, { short: string; long: string }> = {
-  sply: { short: "SPLY", long: "same period last year" },
-  splm: { short: "SPLM", long: "same period last month" },
-};
-
-export default function Dashboard({ report }: { report: Report }) {
+export default function Dashboard({ report, months }: { report: Report; months: MonthOverview[] }) {
   const [cmp, setCmp] = useState<Cmp>("sply");
   const [segment, setSegment] = useState<SegmentKey>("all");
   const [tab, setTab] = useState<Tab>("overview");
+  // months are sorted newest first; the latest month is the default
+  const [month, setMonth] = useState(months[0]?.month ?? "");
+  const monthData = months.find((m) => m.month === month) ?? months[0];
 
   // remember the viewer's last tab / comparison (per-browser convenience only)
   useEffect(() => {
@@ -50,10 +39,12 @@ export default function Dashboard({ report }: { report: Report }) {
         <div>
           <h1>Business Performance</h1>
           <div className="sub">
-            Till {longDate(report.asOf)} · {report.periodLabel} · compared with the {CMP_LABEL[cmp].long}
+            {tab === "overview" && monthData
+              ? <>Till {longDate(monthData.asOf)} · {monthData.periodLabel} · compared with the {CMP_LABEL[cmp].long}</>
+              : <>Till {longDate(report.asOf)} · {report.periodLabel} · compared with the {CMP_LABEL[cmp].long}</>}
           </div>
         </div>
-        <div className="controls">
+        {tab !== "overview" && <div className="controls">
           <div className="seg" role="group" aria-label="Comparison period">
             {(["sply", "splm"] as Cmp[]).map((c) => (
               <button key={c} aria-pressed={cmp === c} onClick={() => setCmp(c)} title={CMP_LABEL[c].long}>
@@ -61,14 +52,14 @@ export default function Dashboard({ report }: { report: Report }) {
               </button>
             ))}
           </div>
-          {(tab === "overview" || tab === "divisions") && (
+          {tab === "divisions" && (
             <select value={segment} onChange={(e) => setSegment(e.target.value as SegmentKey)} aria-label="Store group">
               {segKeys.map((k) => (
                 <option key={k} value={k}>{SEGMENT_LABELS[k]}</option>
               ))}
             </select>
           )}
-        </div>
+        </div>}
       </header>
 
       <nav className="tabs" role="tablist">
@@ -83,7 +74,17 @@ export default function Dashboard({ report }: { report: Report }) {
         ))}
       </nav>
 
-      {tab === "overview" && <Overview report={report} cmp={cmp} seg={seg} segment={segment} />}
+      {tab === "overview" && monthData && (
+        <>
+          <FilterBar
+            months={months.map((m) => m.month)} month={monthData.month} onMonth={setMonth}
+            segments={(Object.keys(SEGMENT_LABELS) as SegmentKey[]).filter((k) => monthData[cmp].segments[k])}
+            segment={segment} onSegment={setSegment}
+            cmp={cmp} onCmp={setCmp}
+          />
+          <Overview data={monthData} cmp={cmp} segment={segment} />
+        </>
+      )}
       {tab === "divisions" && <Divisions cmp={cmp} seg={seg} segment={segment} />}
       {tab === "heads" && <Heads report={report} cmp={cmp} />}
       {tab === "outlets" && <Outlets outlets={report.outlets} cmp={cmp} />}
@@ -103,10 +104,6 @@ function Delta({ v, kind = "pct" }: { v: number | null; kind?: "pct" | "pp" }) {
   const tone = Math.abs(v) < 0.0005 ? "flat" : v > 0 ? "up" : "down";
   const arrow = tone === "up" ? "▲ " : tone === "down" ? "▼ " : "";
   return <span className={`delta ${tone}`}>{arrow}{kind === "pp" ? pp(v) : signedPct(v)}</span>;
-}
-
-function tone(v: number | null): "up" | "down" | "flat" {
-  return v == null || Math.abs(v) < 0.0005 ? "flat" : v > 0 ? "up" : "down";
 }
 
 function metricTip(m: Metrics, c: Cmp): TipRow[] {
@@ -150,91 +147,6 @@ function useSort<T, K extends string>(rows: T[], get: Record<K, (r: T) => number
 /* ------------------------------------------------------------------ overview */
 
 type SegData = { divisions: (Metrics & { division: string })[]; total: Metrics | null };
-
-function Overview({ report, cmp, seg, segment }: { report: Report; cmp: Cmp; seg: SegData; segment: SegmentKey }) {
-  const t = seg.total;
-  const s = CMP_LABEL[cmp].short;
-  const ach = report.target.achv != null && report.target.target ? report.target.achv / report.target.target : null;
-  const divs = seg.divisions;
-  const byGrowth = [...divs]
-    .map((d) => ({ d, g: growth(d.sales, d.salesLast) }))
-    .filter((x) => x.g != null)
-    .sort((a, b) => (b.g as number) - (a.g as number));
-
-  return (
-    <>
-      <section className="kpis">
-        <div className="kpi hero">
-          <div className="label">Sales · {SEGMENT_LABELS[segment]}</div>
-          <div className="value">{taka(t?.sales)}</div>
-          <div className="note">
-            <Delta v={growth(t?.sales, t?.salesLast)} /> vs {s} ({taka(t?.salesLast)})
-          </div>
-        </div>
-        <div className="kpi">
-          <div className="label">Target achievement</div>
-          <div className="value">{pct(ach)}</div>
-          <div className="note">{taka(report.target.achv)} of {taka(report.target.target)}</div>
-          <div className="meter" aria-hidden><span style={{ width: `${Math.min(100, (ach ?? 0) * 100)}%` }} /></div>
-        </div>
-        <div className="kpi">
-          <div className="label">Footfall</div>
-          <div className="value">{int(t?.ff)}</div>
-          <div className="note"><Delta v={growth(t?.ff, t?.ffLast)} /> vs {s}</div>
-        </div>
-        <div className="kpi">
-          <div className="label">Basket size</div>
-          <div className="value">{taka(t?.bs)}</div>
-          <div className="note"><Delta v={growth(t?.bs, t?.bsLast)} /> vs {s}</div>
-        </div>
-        <div className="kpi">
-          <div className="label">Gross profit %</div>
-          <div className="value">{pct(t?.gp, 2)}</div>
-          <div className="note"><Delta v={diff(t?.gp, t?.gpLast)} kind="pp" /> vs {s}</div>
-        </div>
-        <div className="kpi">
-          <div className="label">Gross profit value</div>
-          <div className="value">{taka(t?.gpv)}</div>
-          <div className="note"><Delta v={growth(t?.gpv, t?.gpvLast)} /> vs {s}</div>
-        </div>
-      </section>
-
-      <div className="grid2">
-        <div className="card">
-          <div className="card-head">
-            <div>
-              <h2>Sales by division</h2>
-              <p className="hint">Growth vs {s} shown on the right</p>
-            </div>
-            <div className="legend">
-              <span><i style={{ background: "var(--this)" }} />This period</span>
-              <span><i style={{ background: "var(--last)" }} />{s}</span>
-            </div>
-          </div>
-          <PairedBars
-            items={divs.map((d) => {
-              const g = growth(d.sales, d.salesLast);
-              return { label: titleCase(d.division), now: d.sales ?? 0, last: d.salesLast ?? 0, note: signedPct(g), noteTone: tone(g) };
-            })}
-            format={(v) => taka(v, 1)}
-            tipRows={(i) => metricTip(divs[i], cmp)}
-          />
-        </div>
-        <div className="card">
-          <h2>Sales growth by division</h2>
-          <p className="hint">vs {s}, sorted high to low</p>
-          <DivergingBars
-            items={byGrowth.map(({ d, g }) => ({ label: titleCase(d.division), value: g as number }))}
-            format={(v) => signedPct(v)}
-            tipRows={(i) => metricTip(byGrowth[i].d, cmp)}
-          />
-        </div>
-      </div>
-
-      <LeaderSummary outlets={report.outlets} />
-    </>
-  );
-}
 
 /* ------------------------------------------------------------------ divisions */
 

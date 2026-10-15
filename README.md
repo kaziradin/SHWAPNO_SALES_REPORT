@@ -15,7 +15,13 @@ Each tab can be compared with **SPLY** (same period last year) or **SPLM** (same
 1. Replace `..\1. SALES FILE\Business Performance Report.xlsx` with the new file.
 2. Double-click **`update.bat`**.
 
-`update.bat` runs `scripts/extract.py`, which reads the workbook's cached values into `data/report.json`.
+`update.bat` runs `scripts/extract.py`, which reads the workbook's cached values into:
+
+- `data/months/YYYY-MM.json`: one snapshot per month. It's overwritten each day while the month is open, so the last day becomes the month's final report.
+- `data/months/index.json`: the list of months, used by the Overview's month selector.
+- `data/report.json`: a copy of the latest month, used by the other tabs.
+
+The Overview reads the monthly snapshots. Its filters are Month, Store group, and vs SPLY / vs SPLM.
 It then commits and pushes that file. The GitHub Actions workflow (`.github/workflows/pages.yml`) rebuilds the site and publishes it to
 **https://kaziradin.github.io/SHWAPNO_SALES_REPORT/**.
 

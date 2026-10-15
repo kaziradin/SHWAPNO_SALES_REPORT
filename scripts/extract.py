@@ -1,4 +1,5 @@
-"""Read 'Business Performance Report.xlsx' and write data/report.json for the dashboard.
+"""Read 'Business Performance Report.xlsx' and write the dashboard data:
+data/months/YYYY-MM.json (one per month), data/months/index.json, and data/report.json (latest month).
 
 Usage:  python scripts/extract.py [path-to-xlsx]
 Default input: ../1. SALES FILE/Business Performance Report.xlsx (relative to this project).
@@ -15,6 +16,7 @@ import openpyxl
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_XLSX = ROOT.parent / "1. SALES FILE" / "Business Performance Report.xlsx"
 OUT = ROOT / "data" / "report.json"
+MONTHS = ROOT / "data" / "months"
 
 SEGMENTS = {
     "ALL STORE": "all",
@@ -35,6 +37,9 @@ METRICS = {
     "GP% THIS": "gp", "GP% LAST": "gpLast",
     "GPV THIS": "gpv", "GPV LAST": "gpvLast",
     "CPV THIS": "cpv", "CPV LAST": "cpvLast",
+    # GP including other income (the workbook calls it "Adjusted GP%" / "Adj GPV")
+    "ADJUSTED GP% THIS": "gpOi", "ADJUSTED GP% LAST": "gpOiLast",
+    "ADJ GPV THIS": "gpvOi", "ADJ GPV LAST": "gpvOiLast",
 }
 
 
@@ -42,19 +47,34 @@ def norm(v):
     return re.sub(r"\s+", " ", str(v)).strip().upper() if v is not None else ""
 
 
-def num(v):
+def num(v, digits=4):
     if isinstance(v, bool) or v is None:
         return None
     if isinstance(v, (int, float)):
-        return None if math.isnan(v) or math.isinf(v) else round(float(v), 4)
+        return None if math.isnan(v) or math.isinf(v) else round(float(v), digits)
     try:
-        return round(float(str(v).replace(",", "")), 4)
+        return round(float(str(v).replace(",", "")), digits)
     except ValueError:
         return None
 
 
 def pct(v):
     return None if v is None else round(v / 100, 5)
+
+
+def dump(path, obj):
+    path.write_text(json.dumps(obj, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+
+
+def legacy(report):
+    """Round the SPLY/SPLM store-group blocks to 4 decimals, as report.json always had them."""
+    for c in ("sply", "splm"):
+        for block in report[c]["segments"].values():
+            for rec in block["divisions"] + ([block["total"]] if block["total"] else []):
+                for k, v in rec.items():
+                    if isinstance(v, float):
+                        rec[k] = round(v, 4)
+    return report
 
 
 def rows_of(ws):
@@ -87,7 +107,7 @@ def comparison(ws):
             continue
         if seg is None or not a:
             continue
-        rec = {k: num(r[i]) for k, i in cols.items() if i < len(r)}
+        rec = {k: num(r[i], 10) for k, i in cols.items() if i < len(r)}  # full precision; see legacy()
         if rec.get("sales") is None:
             continue
         if a == "TOTALS":
@@ -210,10 +230,26 @@ def main():
         "outlets": outlet_rows,
         "cat3": cat3(wb["CAT 3 Responsible Person Wise"]),
     }
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(report, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    # One snapshot per month, overwritten daily while the month is open; the last
+    # day's file is what remains as that month's final report.
+    month = str(as_of)[:7]
+    MONTHS.mkdir(parents=True, exist_ok=True)
+    dump(MONTHS / f"{month}.json", report)
+
+    index = []
+    for f in sorted(MONTHS.glob("[0-9][0-9][0-9][0-9]-[0-9][0-9].json")):
+        m = json.loads(f.read_text(encoding="utf-8"))
+        index.append({"month": f.stem, "asOf": m["asOf"], "periodLabel": m["periodLabel"]})
+    dump(MONTHS / "index.json", index)
+
+    # report.json (used by the other tabs) always mirrors the latest month, with the
+    # 4-decimal rounding those tabs were built on so their figures stay exactly the same.
+    latest = index[-1]["month"]
+    dump(OUT, legacy(json.loads((MONTHS / f"{latest}.json").read_text(encoding="utf-8"))))
+
     print(f"As of {as_of} | {len(outlet_rows)} outlets | {len(report['cat3'])} cat-3 rows "
-          f"| SPLY segments {list(sply)} -> {OUT}")
+          f"| SPLY segments {list(sply)}")
+    print(f"Saved month {month}; months on file: {', '.join(i['month'] for i in index)}; report.json = {latest}")
 
 
 if __name__ == "__main__":

@@ -5,6 +5,9 @@ export type Metrics = {
   gp: number | null; gpLast: number | null;
   gpv: number | null; gpvLast: number | null;
   cpv?: number | null; cpvLast?: number | null;
+  /** GP% and GP value including other income (workbook: "Adjusted GP%", "Adj GPV") */
+  gpOi?: number | null; gpOiLast?: number | null;
+  gpvOi?: number | null; gpvOiLast?: number | null;
 };
 
 export type DivisionRow = Metrics & { division: string };
@@ -34,6 +37,17 @@ export type Cat3Row = {
   sameSales: number | null; sameSalesLy: number | null;
   gp: number | null; gpLy: number | null;
   gpv: number | null; gpvLy: number | null;
+};
+
+/** The slice of a monthly snapshot the Overview needs (keeps the page payload small). */
+export type MonthOverview = {
+  month: string; // YYYY-MM
+  asOf: string;
+  periodLabel: string;
+  generatedAt: string;
+  sourceFile: string;
+  sply: { label: string; segments: Comparison["segments"] };
+  splm: { label: string; segments: Comparison["segments"] };
 };
 
 export type Report = {
