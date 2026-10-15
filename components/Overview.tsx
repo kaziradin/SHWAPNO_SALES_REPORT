@@ -1,7 +1,7 @@
 "use client";
 
 import type { DivisionRow, Metrics, MonthOverview, SegmentKey } from "@/lib/types";
-import { full, growth, longDate, pct, signedFull, signedPct } from "@/lib/format";
+import { full, growth, pct, signedFull, signedPct } from "@/lib/format";
 import { useTooltip, useWidth, type TipRow } from "./charts";
 import { CMP_LABEL, SEGMENT_LABELS, type Cmp } from "./FilterBar";
 
@@ -92,14 +92,6 @@ export default function Overview({ data, cmp, segment }: { data: MonthOverview; 
 
   return (
     <div className="ov">
-      {/* Data context: reporting period vs data-through vs extraction time (never "live") */}
-      <p className="ov-context">
-        <span><b>Reporting period</b> {data.periodLabel}</span>
-        <span><b>Data through</b> {longDate(data.asOf)}</span>
-        <span><b>Extracted</b> {data.generatedAt.replace("T", " ").slice(0, 16)} (Asia/Dhaka)</span>
-        <span><b>Scope</b> {SEGMENT_LABELS[segment]} · vs {CMP_LABEL[cmp].long}</span>
-      </p>
-
       {/* KPI strip: Totals row of the selected store group */}
       <section className="ov-kpis" aria-label="Key figures">
         {KPIS.map((m) => {
@@ -255,7 +247,7 @@ function OwnFranchise({ data, cmp }: { data: MonthOverview; cmp: Cmp }) {
         {line(SALES)}
         {line(GP)}
         {line(GPOI)}
-        {line(GPV)}
+        {line(GPVOI)}
         {line(FF, "Footfall")}
         {line(BS, "Basket")}
       </div>

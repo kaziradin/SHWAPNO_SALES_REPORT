@@ -30,13 +30,16 @@ export default function FilterBar({
   months, month, onMonth,
   segments, segment, onSegment,
   cmp, onCmp,
+  layout = "bar",
 }: {
   months: string[]; month: string; onMonth: (m: string) => void;
   segments: SegmentKey[]; segment: SegmentKey; onSegment: (s: SegmentKey) => void;
   cmp: Cmp; onCmp: (c: Cmp) => void;
+  /** "bar": sticky horizontal bar; "side": stacked fields for the sidebar */
+  layout?: "bar" | "side";
 }) {
   return (
-    <div className="fbar" role="toolbar" aria-label="Report filters">
+    <div className={`fbar${layout === "side" ? " side" : ""}`} role="toolbar" aria-label="Report filters">
       <label className="fbar-field">
         <span>Month</span>
         <select value={month} onChange={(e) => onMonth(e.target.value)}>

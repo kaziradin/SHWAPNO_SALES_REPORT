@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Cat3Row, Metrics, MonthOverview, Outlet, Report, SegmentKey } from "@/lib/types";
-import { diff, growth, int, longDate, pct, pp, signedPct, taka, titleCase } from "@/lib/format";
+import { diff, growth, int, longDate, monthName, pct, pp, signedPct, taka, titleCase } from "@/lib/format";
 import { DivergingBars, type TipRow } from "./charts";
 import FilterBar, { CMP_LABEL, SEGMENT_LABELS, type Cmp } from "./FilterBar";
 import Overview from "./Overview";
@@ -16,25 +16,65 @@ export default function Dashboard({ report, months }: { report: Report; months: 
   // months are sorted newest first; the latest month is the default
   const [month, setMonth] = useState(months[0]?.month ?? "");
   const monthData = months.find((m) => m.month === month) ?? months[0];
-
-  // remember the viewer's last tab / comparison (per-browser convenience only)
+  // Overview sidebar (Claude-style): docked + collapsible on desktop, drawer on small screens
+  const [sideOpen, setSideOpen] = useState(true);
+  const [drawer, setDrawer] = useState(false);
   useEffect(() => {
-    try {
-      const s = JSON.parse(localStorage.getItem("bpr-view") || "{}");
-      if (s.cmp) setCmp(s.cmp);
-      if (s.tab) setTab(s.tab);
-    } catch {}
+    try { if (localStorage.getItem("bpr-side") === "closed") setSideOpen(false); } catch {}
   }, []);
+  const setSide = (open: boolean) => {
+    setSideOpen(open);
+    try { localStorage.setItem("bpr-side", open ? "open" : "closed"); } catch {}
+  };
   useEffect(() => {
-    try { localStorage.setItem("bpr-view", JSON.stringify({ cmp, tab })); } catch {}
-  }, [cmp, tab]);
+    if (!drawer) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setDrawer(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drawer]);
 
   const comparison = report[cmp];
   const seg = comparison.segments[segment] ?? comparison.segments.all!;
   const segKeys = (Object.keys(SEGMENT_LABELS) as SegmentKey[]).filter((k) => comparison.segments[k]);
 
+  const sidebar = tab === "overview" && monthData ? (
+    <>
+      {drawer && <div className="ov-backdrop" onClick={() => setDrawer(false)} aria-hidden />}
+      <aside id="ov-sidebar" className={`ov-sb${sideOpen ? "" : " rail"}${drawer ? " drawer" : ""}`} aria-label="Filters and report details">
+        <div className="ov-sb-top">
+          {(sideOpen || drawer) && <span className="ov-sb-brand">Shwapno BPR</span>}
+          <button className="ov-sb-icon" title={drawer ? "Close" : sideOpen ? "Close sidebar" : "Open sidebar"}
+            aria-label={drawer ? "Close filters" : sideOpen ? "Close sidebar" : "Open sidebar"} aria-expanded={sideOpen || drawer}
+            onClick={() => (drawer ? setDrawer(false) : setSide(!sideOpen))}>
+            <Icon name="panel" />
+          </button>
+        </div>
+        {sideOpen || drawer ? (
+          <div className="ov-sb-body">
+            <div className="ov-sb-label">Filters</div>
+            <FilterBar
+              layout="side"
+              months={months.map((m) => m.month)} month={monthData.month} onMonth={setMonth}
+              segments={(Object.keys(SEGMENT_LABELS) as SegmentKey[]).filter((k) => monthData[cmp].segments[k])}
+              segment={segment} onSegment={setSegment}
+              cmp={cmp} onCmp={setCmp}
+            />
+          </div>
+        ) : (
+          <nav className="ov-sb-rail" aria-label="Filters (collapsed)">
+            <button title={`Month: ${monthName(monthData.month)}`} onClick={() => setSide(true)}><Icon name="calendar" /></button>
+            <button title={`Store group: ${SEGMENT_LABELS[segment]}`} onClick={() => setSide(true)}><Icon name="store" /></button>
+            <button title={`Compare with: ${CMP_LABEL[cmp].short}`} onClick={() => setSide(true)}><Icon name="compare" /></button>
+          </nav>
+        )}
+      </aside>
+    </>
+  ) : null;
+
   return (
-    <main className="wrap">
+    <div className={sidebar ? `ov-shell${sideOpen ? "" : " rail"}` : undefined}>
+    {sidebar}
+    <main className={`wrap${tab === "overview" ? " wide" : ""}`}>
       <header className="top">
         <div>
           <h1>Business Performance</h1>
@@ -76,12 +116,9 @@ export default function Dashboard({ report, months }: { report: Report; months: 
 
       {tab === "overview" && monthData && (
         <>
-          <FilterBar
-            months={months.map((m) => m.month)} month={monthData.month} onMonth={setMonth}
-            segments={(Object.keys(SEGMENT_LABELS) as SegmentKey[]).filter((k) => monthData[cmp].segments[k])}
-            segment={segment} onSegment={setSegment}
-            cmp={cmp} onCmp={setCmp}
-          />
+          <button className="ov-drawer-btn" onClick={() => setDrawer(true)} aria-controls="ov-sidebar" aria-expanded={drawer}>
+            <Icon name="panel" /> Filters · {monthName(monthData.month)} · {SEGMENT_LABELS[segment]} · vs {CMP_LABEL[cmp].short}
+          </button>
           <Overview data={monthData} cmp={cmp} segment={segment} />
         </>
       )}
@@ -94,10 +131,24 @@ export default function Dashboard({ report, months }: { report: Report; months: 
         Source: {report.sourceFile} · data extracted {report.generatedAt.replace("T", " ")}
       </p>
     </main>
+    </div>
   );
 }
 
 /* ------------------------------------------------------------------ helpers */
+
+function Icon({ name }: { name: "panel" | "calendar" | "store" | "compare" }) {
+  const p = {
+    panel: <><rect x="3" y="4" width="14" height="12" rx="2" /><path d="M8 4v12" /></>,
+    calendar: <><rect x="3" y="4.5" width="14" height="12" rx="2" /><path d="M3 8.5h14M7 3v3M13 3v3" /></>,
+    store: <><path d="M3.5 8 5 4h10l1.5 4" /><path d="M3.5 8h13v1.2a2.2 2.2 0 0 1-4.3 0 2.2 2.2 0 0 1-4.4 0 2.2 2.2 0 0 1-4.3 0Z" /><path d="M5 10.5V16h10v-5.5" /></>,
+    compare: <><path d="M4 7h11l-3-3M16 13H5l3 3" /></>,
+  }[name];
+  return (
+    <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden>{p}</svg>
+  );
+}
 
 function Delta({ v, kind = "pct" }: { v: number | null; kind?: "pct" | "pp" }) {
   if (v == null || !isFinite(v)) return <span className="delta flat">–</span>;
