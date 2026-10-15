@@ -21,9 +21,12 @@ Each tab can be compared with **SPLY** (same period last year) or **SPLM** (same
 - `data/months/index.json`: the list of months, used by the Overview's month selector.
 - `data/report.json`: a copy of the latest month, used by the other tabs.
 
-The Overview reads the monthly snapshots. Its filters are Month, Store group, and vs SPLY / vs SPLM.
-It then commits and pushes that file. The GitHub Actions workflow (`.github/workflows/pages.yml`) rebuilds the site and publishes it to
+`update.bat` then commits and pushes the `data` folder. The GitHub Actions workflow (`.github/workflows/pages.yml`) rebuilds the site and publishes it to
 **https://kaziradin.github.io/SHWAPNO_SALES_REPORT/**.
+
+The Overview reads the monthly snapshots. Its filters are Month, Store group, and vs SPLY / vs SPLM.
+
+GitHub Pages must be set to **Settings → Pages → Source: GitHub Actions**. With "Deploy from a branch", GitHub also publishes this README to the same address and can overwrite the dashboard.
 
 ## Local development
 
