@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import type { Cat3Row, HeadRow, Metrics, MonthOverview, Outlet, Report, SegmentKey } from "@/lib/types";
 import { diff, growth, int, longDate, monthName, pct, pp, signedPct, taka, titleCase } from "@/lib/format";
-import { DivergingBars, type TipRow } from "./charts";
+import { DivergingBars, useTooltip, type TipRow } from "./charts";
 import { downloadExcel, ExportButton, type ExportCell, type ExportCol } from "@/lib/export";
 import FilterBar, { CMP_LABEL, SEGMENT_LABELS, type Cmp } from "./FilterBar";
 import Overview from "./Overview";
@@ -206,20 +206,25 @@ const toneOfNum = (v: number | null | undefined): "up" | "down" | "flat" =>
 const arrowOf = (t: "up" | "down" | "flat") => (t === "up" ? "▲ " : t === "down" ? "▼ " : "");
 const ratioOf = (a: number, b: number) => (b ? a / b : null);
 
-type ChartItem = { label: string; now: number; last: number; chg: string; t: "up" | "down" | "flat"; nowText: string; lastText: string };
+type ChartKind = "crore" | "full" | "pct";
+type ChartItem = { label: string; now: number; last: number; chg: string; t: "up" | "down" | "flat"; kind: ChartKind };
+
+/** Values in the same format as the Overview tooltip: crore for money, full figures for counts, % for ratios. */
+const fmtKind = (k: ChartKind, v: number) => (k === "crore" ? crFmt(v) : k === "pct" ? pct(v, 2) : fm(v));
+const diffKind = (k: ChartKind, d: number) => (k === "crore" ? crSigned(d) : k === "pct" ? signedPct(d, 2) : `${d >= 0 ? "+" : "−"}${fm(Math.abs(d))}`);
 
 /** Growth bars: this period (navy) against SPLY (grey) for one head. */
-function growthItem(r: HeadRow, now: number | null | undefined, last: number | null | undefined, fmtv: (v: number) => string): ChartItem {
+function growthItem(r: HeadRow, now: number | null | undefined, last: number | null | undefined, kind: ChartKind): ChartItem {
   const n = now ?? 0, l = last ?? 0;
   const g = n && l ? n / l - 1 : null;
-  return { label: headLabel(r), now: n, last: l, chg: signedPct(g, 2), t: toneOfNum(g), nowText: fmtv(n), lastText: fmtv(l) };
+  return { label: headLabel(r), now: n, last: l, chg: signedPct(g, 2), t: toneOfNum(g), kind };
 }
 
 /** Ratio bars (GP%, GP+OI%): the change shown is the difference between the two percentages. */
 function pointItem(r: HeadRow, now: number | null | undefined, last: number | null | undefined): ChartItem {
   const n = now ?? 0, l = last ?? 0;
   const d = now != null && last != null ? now - last : null;
-  return { label: headLabel(r), now: n, last: l, chg: signedPct(d, 2), t: toneOfNum(d), nowText: pct(n, 2), lastText: pct(l, 2) };
+  return { label: headLabel(r), now: n, last: l, chg: signedPct(d, 2), t: toneOfNum(d), kind: "pct" };
 }
 
 function wrapText(text: string, max: number): string[] {
@@ -234,8 +239,9 @@ function wrapText(text: string, max: number): string[] {
   return lines;
 }
 
-/** Full-width column chart: navy = this period, grey = SPLY; change above each pair; full label below. */
+/** Full-width column chart: navy = this period, grey = SPLY; change above each pair; full label below. Hover shows the figures. */
 function HeadChart({ title, sub, items, sLabel }: { title: string; sub: string; items: ChartItem[]; sLabel: string }) {
+  const { show, hide, node } = useTooltip();
   const W = 1000, top = 40, plotH = 220;
   if (items.length === 0) return null;
   const perLine = Math.max(12, Math.floor(W / items.length / 6.2));
@@ -246,6 +252,12 @@ function HeadChart({ title, sub, items, sLabel }: { title: string; sub: string; 
   const vmax = Math.max(1e-9, ...items.flatMap((it) => [Math.abs(it.now), Math.abs(it.last)]));
   const gw = W / items.length;
   const bw = Math.min(26, (gw - 14) / 2);
+  const tip = (it: ChartItem): TipRow[] => [
+    ["This period", fmtKind(it.kind, it.now)],
+    [sLabel, fmtKind(it.kind, it.last)],
+    ["Difference", diffKind(it.kind, it.now - it.last)],
+    ["Change", it.chg],
+  ];
   return (
     <div className="ov-panel">
       <h3>{title}<small>{sub}</small></h3>
@@ -261,8 +273,8 @@ function HeadChart({ title, sub, items, sLabel }: { title: string; sub: string; 
           const topY = base - Math.max(hn, hl, 2);
           const col = it.t === "up" ? "var(--ov-up)" : it.t === "down" ? "var(--ov-down)" : "var(--ov-ink2)";
           return (
-            <g key={i}>
-              <title>{`${it.label}\nThis period: ${it.nowText}\n${sLabel}: ${it.lastText}\nChange: ${it.chg}`}</title>
+            <g key={i} onMouseMove={(e) => show(e, it.label, tip(it))} onMouseLeave={hide}>
+              <rect className="ov-col-hit" x={gw * i} y={0} width={gw} height={H} />
               <rect x={cx - bw - 1} y={base - hn} width={bw} height={Math.max(hn, 0)} rx={3} style={{ fill: "var(--this)" }} />
               <rect x={cx + 1} y={base - hl} width={bw} height={Math.max(hl, 0)} rx={3} style={{ fill: "var(--last)" }} />
               <text x={cx} y={topY - 8} textAnchor="middle" fontSize={12} style={{ fill: col, fontWeight: 600 }}>{it.chg}</text>
@@ -273,6 +285,7 @@ function HeadChart({ title, sub, items, sLabel }: { title: string; sub: string; 
           );
         })}
       </svg>
+      {node}
     </div>
   );
 }
@@ -454,21 +467,21 @@ function Heads({ report, cmp }: { report: Report; cmp: Cmp }) {
 
       <div className="ov-section-head"><h2>Sales performance</h2></div>
       <HeadChart title="Sales by category head" sub={`value and growth vs ${s}`} sLabel={s}
-        items={rows.map((r) => growthItem(r, r.sales, r.salesLast, fmtMoney))} />
+        items={rows.map((r) => growthItem(r, r.sales, r.salesLast, "crore"))} />
 
       <div className="ov-section-head"><h2>Traffic and basket</h2></div>
       <HeadChart title="Footfall (FF)" sub={`invoices, growth vs ${s}`} sLabel={s}
-        items={rows.map((r) => growthItem(r, r.ff, r.ffLast, fmtMoney))} />
+        items={rows.map((r) => growthItem(r, r.ff, r.ffLast, "full"))} />
       <HeadChart title="Basket size" sub={`sales per invoice, growth vs ${s}`} sLabel={s}
-        items={rows.map((r) => growthItem(r, r.bs, r.bsLast, fmtMoney))} />
+        items={rows.map((r) => growthItem(r, r.bs, r.bsLast, "full"))} />
 
       <div className="ov-section-head"><h2>GPV and GPV+OI performance</h2></div>
       <HeadChart title="GPV" sub={`growth vs ${s}`} sLabel={s}
-        items={rows.map((r) => growthItem(r, r.gpv, r.gpvLast, crFmt))} />
+        items={rows.map((r) => growthItem(r, r.gpv, r.gpvLast, "crore"))} />
       <HeadChart title="GP%" sub={`change vs ${s} (%)`} sLabel={s}
         items={rows.map((r) => pointItem(r, r.gp, r.gpLast))} />
       <HeadChart title="GPV+OI" sub={`growth vs ${s}`} sLabel={s}
-        items={rows.map((r) => growthItem(r, r.gpvOi, r.gpvOiLast, crFmt))} />
+        items={rows.map((r) => growthItem(r, r.gpvOi, r.gpvOiLast, "crore"))} />
       <HeadChart title="GP+OI%" sub={`change vs ${s} (%)`} sLabel={s}
         items={rows.map((r) => pointItem(r, r.gpOi, r.gpOiLast))} />
 
