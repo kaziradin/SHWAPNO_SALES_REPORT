@@ -226,6 +226,9 @@ def cat3(ws):
             "gpv": num(r[24]), "gpvLy": num(r[25]),
             # GPV + value adjustment (the workbook's "GP+OI" basis) for each category
             "gpvOi": num(r[32]), "gpvOiLy": num(r[33]),
+            # same-store versions of GPV and GPV + value adjustment
+            "sameGpv": num(r[27]), "sameGpvLy": num(r[28]),
+            "sameGpvOi": num(r[37]), "sameGpvOiLy": num(r[38]),
         })
     return out
 

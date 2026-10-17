@@ -4,6 +4,7 @@ import type { DivisionRow, Metrics, MonthOverview, SegmentKey } from "@/lib/type
 import { full, growth, pct, signedFull, signedPct } from "@/lib/format";
 import { useTooltip, useWidth, type TipRow } from "./charts";
 import { CMP_LABEL, SEGMENT_LABELS, type Cmp } from "./FilterBar";
+import { downloadExcel, ExportButton, type ExportCell, type ExportCol } from "@/lib/export";
 
 /** The six divisions shown on the Overview, in this order (Restaurant etc. are excluded). */
 const DIVISIONS: { key: string; label: string }[] = [
@@ -292,6 +293,23 @@ function OwnFranchise({ data, cmp, segment }: { data: MonthOverview; cmp: Cmp; s
     return { ...d, o: find(own), f: find(fran) };
   });
 
+  const exportOwnFran = () => {
+    const ms: Metric[] = [SALES, GPOI];
+    const sides = [SEGMENT_LABELS[pair.own], SEGMENT_LABELS[pair.fran]];
+    const cols: ExportCol[] = [{ header: "Division", format: "text" }];
+    for (const name of sides) {
+      for (const m of ms) {
+        const f = m.kind === "pct" ? "pct" : "money";
+        cols.push({ header: `${name} ${m.label}`, format: f }, { header: `${name} ${m.label} ${s}`, format: f }, { header: `${name} ${m.label} change`, format: "pct" });
+      }
+    }
+    const body: ExportCell[][] = divRows.map((r) => [
+      r.label,
+      ...metricExportValues(ms, r.o),
+      ...metricExportValues(ms, r.f),
+    ]);
+    downloadExcel(`own-vs-franchise-by-division-${s}.xlsx`, "Own vs Franchise", cols, body);
+  };
   return (
     <section className="ovf" aria-labelledby="ovf-h">
       <div className="ovf-title">
@@ -308,6 +326,7 @@ function OwnFranchise({ data, cmp, segment }: { data: MonthOverview; cmp: Cmp; s
       </div>
       <details className="ovf-div">
         <summary>Show by division</summary>
+        <div className="xbar" style={{ marginTop: 8 }}><ExportButton onClick={exportOwnFran} /></div>
         <div className="ov-table-scroll">
           <table className="ov-table">
             <thead>
@@ -372,8 +391,34 @@ function Ranking({ metric, rows, s }: { metric: Metric; rows: Row[]; s: string }
 }
 
 /** Detail table: every Overview number in one place (also the accessible alternative to the charts). */
+/** Excel columns for a set of metrics: this period, comparison and change, in that order. */
+function metricExportCols(metrics: Metric[], s: string, first: string): ExportCol[] {
+  const cols: ExportCol[] = [{ header: first, format: "text" }];
+  for (const m of metrics) {
+    const f = m.kind === "pct" ? "pct" : m.key === "ff" || m.key === "bs" ? "int" : "money";
+    cols.push({ header: m.label, format: f }, { header: `${m.label} ${s}`, format: f }, { header: `${m.label} change`, format: "pct" });
+  }
+  return cols;
+}
+
+function metricExportValues(metrics: Metric[], m: Metrics | undefined): ExportCell[] {
+  const out: ExportCell[] = [];
+  for (const x of metrics) {
+    const now = val(m, x.now), last = lastVal(m, x);
+    out.push(now, last, change(x.kind, now, last));
+  }
+  return out;
+}
+
 function DivisionTable({ rows, total, s }: { rows: Row[]; total: Metrics | undefined; s: string }) {
   const cols: Metric[] = [SALES, GPV, GP, GPVOI, GPOI, FF, BS];
+  const exportXlsx = () => {
+    const body: ExportCell[][] = [
+      ...rows.map((r) => [r.label, ...metricExportValues(cols, r.row)]),
+      ["Total", ...metricExportValues(cols, total)],
+    ];
+    downloadExcel(`division-detail-${s}.xlsx`, "Division detail", metricExportCols(cols, s, "Division"), body);
+  };
   const line = (label: string, m: Metrics | undefined, cls = "") => (
     <tr className={cls} key={label}>
       <th scope="row">{label}</th>
@@ -390,6 +435,7 @@ function DivisionTable({ rows, total, s }: { rows: Row[]; total: Metrics | undef
   );
   return (
     <div className="ov-panel ov-table-panel">
+      <div className="xbar" style={{ padding: "12px 16px 0" }}><ExportButton onClick={exportXlsx} /></div>
       <div className="ov-table-scroll">
         <table className="ov-table">
           <caption>Division results with change vs {s}. Total is the workbook Totals row (includes Restaurant).</caption>

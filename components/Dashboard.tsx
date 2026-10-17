@@ -4,10 +4,11 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import type { Cat3Row, HeadRow, Metrics, MonthOverview, Outlet, Report, SegmentKey } from "@/lib/types";
 import { diff, growth, int, longDate, monthName, pct, pp, signedPct, taka, titleCase } from "@/lib/format";
 import { DivergingBars, type TipRow } from "./charts";
+import { downloadExcel, ExportButton, type ExportCell, type ExportCol } from "@/lib/export";
 import FilterBar, { CMP_LABEL, SEGMENT_LABELS, type Cmp } from "./FilterBar";
 import Overview from "./Overview";
 
-type Tab = "overview" | "divisions" | "heads" | "outlets" | "categories";
+type Tab = "overview" | "heads" | "outlets" | "categories";
 
 export default function Dashboard({ report, months }: { report: Report; months: MonthOverview[] }) {
   const [cmp, setCmp] = useState<Cmp>("sply");
@@ -92,20 +93,12 @@ export default function Dashboard({ report, months }: { report: Report; months: 
               </button>
             ))}
           </div>
-          {tab === "divisions" && (
-            <select value={segment} onChange={(e) => setSegment(e.target.value as SegmentKey)} aria-label="Store group">
-              {segKeys.map((k) => (
-                <option key={k} value={k}>{SEGMENT_LABELS[k]}</option>
-              ))}
-            </select>
-          )}
         </div>}
       </header>
 
       <nav className="tabs" role="tablist">
         {([
           ["overview", "Overview"],
-          ["divisions", "Divisions"],
           ["heads", "Category heads"],
           ["outlets", "Outlets & targets"],
           ["categories", "Categories (Cat 3)"],
@@ -122,7 +115,6 @@ export default function Dashboard({ report, months }: { report: Report; months: 
           <Overview data={monthData} cmp={cmp} segment={segment} />
         </>
       )}
-      {tab === "divisions" && <Divisions cmp={cmp} seg={seg} segment={segment} />}
       {tab === "heads" && <Heads report={report} cmp={cmp} />}
       {tab === "outlets" && <Outlets outlets={report.outlets} cmp={cmp} />}
       {tab === "categories" && <Categories rows={report.cat3} />}
@@ -196,62 +188,6 @@ function useSort<T, K extends string>(rows: T[], get: Record<K, (r: T) => number
 }
 
 /* ------------------------------------------------------------------ overview */
-
-type SegData = { divisions: (Metrics & { division: string })[]; total: Metrics | null };
-
-/* ------------------------------------------------------------------ divisions */
-
-function Divisions({ cmp, seg, segment }: { cmp: Cmp; seg: SegData; segment: SegmentKey }) {
-  const s = CMP_LABEL[cmp].short;
-  return (
-    <div className="card">
-      <h2>Division performance · {SEGMENT_LABELS[segment]}</h2>
-      <p className="hint">Every metric compared with the {CMP_LABEL[cmp].long} ({s}). Change the store group at the top right.</p>
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Division</th>
-              <th>Sales</th><th>Sales {s}</th><th>Growth</th>
-              <th>Footfall</th><th>FF growth</th>
-              <th>Basket</th><th>Basket chg</th>
-              <th>GP %</th><th>GP % chg</th>
-              <th>GP value</th><th>GPV growth</th>
-            </tr>
-          </thead>
-          <tbody>
-            {seg.divisions.map((d) => <DivRow key={d.division} d={d} />)}
-          </tbody>
-          {seg.total && (
-            <tfoot>
-              <DivRow d={{ ...seg.total, division: "Total" }} />
-            </tfoot>
-          )}
-        </table>
-      </div>
-      {seg.divisions.length === 0 && <p className="hint">No data for this store group.</p>}
-    </div>
-  );
-}
-
-function DivRow({ d }: { d: Metrics & { division: string } }) {
-  return (
-    <tr>
-      <td>{d.division === "Total" ? "Total" : titleCase(d.division)}</td>
-      <td>{taka(d.sales)}</td>
-      <td>{taka(d.salesLast)}</td>
-      <td><Delta v={growth(d.sales, d.salesLast)} /></td>
-      <td>{int(d.ff)}</td>
-      <td><Delta v={growth(d.ff, d.ffLast)} /></td>
-      <td>{taka(d.bs)}</td>
-      <td><Delta v={growth(d.bs, d.bsLast)} /></td>
-      <td>{pct(d.gp, 2)}</td>
-      <td><Delta v={diff(d.gp, d.gpLast)} kind="pp" /></td>
-      <td>{taka(d.gpv)}</td>
-      <td><Delta v={growth(d.gpv, d.gpvLast)} /></td>
-    </tr>
-  );
-}
 
 /* ------------------------------------------------------------------ category heads */
 
@@ -352,17 +288,60 @@ function Num({ value, change, t }: { value: string; change: string | null; t: "u
   );
 }
 
+/** Growth and percentage-point difference for Excel columns (null when there is no base). */
+const growthOf = (n?: number | null, l?: number | null): number | null => (n == null || l == null || !l ? null : n / l - 1);
+const diffOf = (n?: number | null, l?: number | null): number | null => (n == null || l == null ? null : n - l);
+
+type HeadSort = { key: "name" | "sales" | "gpv" | "gp" | "gpvoi" | "goi" | "ff" | "bs"; dir: "asc" | "desc" };
+
+function headSortValue(r: HeadRow, key: HeadSort["key"]): number | string {
+  switch (key) {
+    case "name": return `${r.division} ${r.head}`;
+    case "sales": return r.sales ?? 0;
+    case "gpv": return r.gpv ?? 0;
+    case "gp": return r.gp ?? 0;
+    case "gpvoi": return r.gpvOi ?? 0;
+    case "goi": return r.gpOi ?? 0;
+    case "ff": return r.ff ?? 0;
+    case "bs": return (r.sales ?? 0) / (r.ff || 1);
+  }
+}
+
+/** Orders the heads for the table and every head chart. */
+function sortHeads(rs: HeadRow[], sort: HeadSort): HeadRow[] {
+  const m = sort.dir === "asc" ? 1 : -1;
+  return [...rs].sort((x, y) => {
+    const a = headSortValue(x, sort.key), b = headSortValue(y, sort.key);
+    return typeof a === "string" ? a.localeCompare(b as string) * m : ((a as number) - (b as number)) * m;
+  });
+}
+
+function SortTh({ k, label, sort, onSort, cls }: { k: HeadSort["key"]; label: string; sort: HeadSort; onSort: (k: HeadSort["key"]) => void; cls?: string }) {
+  const active = sort.key === k;
+  return (
+    <th scope="col" className={cls} aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
+      <button className="sortbtn" onClick={() => onSort(k)}>{label}{active ? (sort.dir === "asc" ? " ▲" : " ▼") : ""}</button>
+    </th>
+  );
+}
+
 function Heads({ report, cmp }: { report: Report; cmp: Cmp }) {
   const s = CMP_LABEL[cmp].short;
   const blocks = report[cmp].headBlocks ?? {};
   const keys = (Object.keys(SEGMENT_LABELS) as SegmentKey[]).filter((k) => blocks[k]?.length);
   const [drill, setDrill] = useState<HeadRow | null>(null);
   const [seg, setSeg] = useState<SegmentKey>("all");
+  const [hsort, setHsort] = useState<HeadSort>({ key: "sales", dir: "desc" });
+  const onHeadSort = (k: HeadSort["key"]) =>
+    setHsort((s) => (s.key === k ? { key: k, dir: s.dir === "asc" ? "desc" : "asc" } : { key: k, dir: k === "name" ? "asc" : "desc" }));
   // the drill-down uses the Cat 3 sheet, which is SPLY only
   useEffect(() => { if (cmp !== "sply") setDrill(null); }, [cmp]);
-  if (drill && cmp === "sply") return <HeadDrill head={drill} cat={report.cat3 ?? []} seg={seg} onBack={() => setDrill(null)} />;
+  if (drill && cmp === "sply") {
+    const headSame = (blocks.same ?? []).find((x) => x.division === drill.division && x.head === drill.head);
+    return <HeadDrill head={drill} headSame={headSame} cat={report.cat3 ?? []} seg={seg} onBack={() => setDrill(null)} />;
+  }
 
-  const rows = blocks[seg] ?? [];
+  const rows = sortHeads(blocks[seg] ?? [], hsort);
   const sum = (f: (r: HeadRow) => number | null | undefined) => rows.reduce((t, r) => t + (f(r) ?? 0), 0);
   const S = sum((r) => r.sales), L = sum((r) => r.salesLast);
   const G = sum((r) => r.gpv), GL = sum((r) => r.gpvLast);
@@ -395,6 +374,39 @@ function Heads({ report, cmp }: { report: Report; cmp: Cmp }) {
   const pFrom = (n: number | null | undefined, l: number | null | undefined) => {
     const d = n != null && l != null ? n - l : null;
     return { change: signedPct(d, 2), t: toneOfNum(d) };
+  };
+
+  const exportHeads = () => {
+    const cols: ExportCol[] = [
+      { header: "Division", format: "text" }, { header: "Category role", format: "text" }, { header: "Head", format: "text" },
+      { header: "Sales", format: "money" }, { header: `Sales ${s}`, format: "money" }, { header: "Sales growth", format: "pct" },
+      { header: "GPV", format: "money" }, { header: `GPV ${s}`, format: "money" }, { header: "GPV growth", format: "pct" },
+      { header: "GP%", format: "pct" }, { header: `GP% ${s}`, format: "pct" }, { header: "GP% change", format: "pct" },
+      { header: "GPV+OI", format: "money" }, { header: `GPV+OI ${s}`, format: "money" }, { header: "GPV+OI growth", format: "pct" },
+      { header: "GP+OI%", format: "pct" }, { header: `GP+OI% ${s}`, format: "pct" }, { header: "GP+OI% change", format: "pct" },
+      { header: "Footfall", format: "int" }, { header: `Footfall ${s}`, format: "int" }, { header: "Footfall growth", format: "pct" },
+      { header: "Basket", format: "int" }, { header: `Basket ${s}`, format: "int" }, { header: "Basket growth", format: "pct" },
+    ];
+    const rowValues = (r: Partial<HeadRow>): ExportCell[] => {
+      const bsNow = (r.sales ?? 0) / (r.ff || 1), bsLast = (r.salesLast ?? 0) / (r.ffLast || 1);
+      return [
+        r.sales ?? 0, r.salesLast ?? 0, growthOf(r.sales, r.salesLast),
+        r.gpv ?? 0, r.gpvLast ?? 0, growthOf(r.gpv, r.gpvLast),
+        r.gp ?? null, r.gpLast ?? null, diffOf(r.gp, r.gpLast),
+        r.gpvOi ?? 0, r.gpvOiLast ?? 0, growthOf(r.gpvOi, r.gpvOiLast),
+        r.gpOi ?? null, r.gpOiLast ?? null, diffOf(r.gpOi, r.gpOiLast),
+        r.ff ?? 0, r.ffLast ?? 0, growthOf(r.ff, r.ffLast),
+        bsNow, bsLast, growthOf(bsNow, bsLast),
+      ];
+    };
+    const body: ExportCell[][] = [
+      ...rows.map((r) => [titleCase(r.division), roleName(r.role), r.head, ...rowValues(r)]),
+      ["Total (" + rows.length + " heads)", "", "", ...rowValues({
+        sales: S, salesLast: L, gpv: G, gpvLast: GL, gp: gp, gpLast: gpL,
+        gpvOi: GO, gpvOiLast: GOL, gpOi: goi, gpOiLast: goiL, ff: FF, ffLast: FFL,
+      })],
+    ];
+    downloadExcel(`category-heads-${s === "SPLY" ? "sply" : "splm"}.xlsx`, "Category heads", cols, body);
   };
 
   return (
@@ -463,6 +475,7 @@ function Heads({ report, cmp }: { report: Report; cmp: Cmp }) {
         items={rows.map((r) => pointItem(r, r.gpOi, r.gpOiLast))} />
 
       <div className="ov-section-head"><h2>Head detail</h2></div>
+      <div className="xbar"><ExportButton onClick={exportHeads} /></div>
       <div className="ov-panel ov-table-panel">
         <div className="ov-table-scroll">
           <table className="ov-table">
@@ -471,8 +484,14 @@ function Heads({ report, cmp }: { report: Report; cmp: Cmp }) {
             </caption>
             <thead>
               <tr>
-                <th scope="col">Head</th><th scope="col">Sales</th><th scope="col">GPV</th><th scope="col">GP%</th>
-                <th scope="col">GPV+OI</th><th scope="col">GP+OI%</th><th scope="col">Footfall</th><th scope="col">Basket</th>
+                <SortTh k="name" label="Head" sort={hsort} onSort={onHeadSort} cls="l" />
+                <SortTh k="sales" label="Sales" sort={hsort} onSort={onHeadSort} />
+                <SortTh k="gpv" label="GPV" sort={hsort} onSort={onHeadSort} />
+                <SortTh k="gp" label="GP%" sort={hsort} onSort={onHeadSort} />
+                <SortTh k="gpvoi" label="GPV+OI" sort={hsort} onSort={onHeadSort} />
+                <SortTh k="goi" label="GP+OI%" sort={hsort} onSort={onHeadSort} />
+                <SortTh k="ff" label="Footfall" sort={hsort} onSort={onHeadSort} />
+                <SortTh k="bs" label="Basket" sort={hsort} onSort={onHeadSort} />
               </tr>
             </thead>
             <tbody>
@@ -520,15 +539,31 @@ const SMALL_BASE = 100000; // last-year base below this: growth is not meaningfu
 const MAX_GROWTH = 5;      // changes beyond ±500% are not meaningful
 const fm = (v: number) => Math.round(v).toLocaleString("en-US");
 
+type Level = "all" | "same";
 type Agg = { s: number; sl: number; gpv: number; gpvl: number; goi: number; goil: number };
-function aggregate(rs: Cat3Row[]): Agg {
-  const t = { s: 0, sl: 0, gpv: 0, gpvl: 0, goi: 0, goil: 0 };
+type SortKey = "name" | "sales" | "gp" | "gpv" | "goi" | "gpvoi";
+type Sort = { key: SortKey; dir: "asc" | "desc" };
+
+/** Sum of Cat 3 rows at the chosen store level (all stores or same stores). */
+function aggregate(rs: Cat3Row[], level: Level): Agg {
+  const t: Agg = { s: 0, sl: 0, gpv: 0, gpvl: 0, goi: 0, goil: 0 };
   for (const r of rs) {
-    t.s += r.sales ?? 0; t.sl += r.salesLy ?? 0;
-    t.gpv += r.gpv ?? 0; t.gpvl += r.gpvLy ?? 0;
-    t.goi += r.gpvOi ?? 0; t.goil += r.gpvOiLy ?? 0;
+    if (level === "all") {
+      t.s += r.sales ?? 0; t.sl += r.salesLy ?? 0;
+      t.gpv += r.gpv ?? 0; t.gpvl += r.gpvLy ?? 0;
+      t.goi += r.gpvOi ?? 0; t.goil += r.gpvOiLy ?? 0;
+    } else {
+      t.s += r.sameSales ?? 0; t.sl += r.sameSalesLy ?? 0;
+      t.gpv += r.sameGpv ?? 0; t.gpvl += r.sameGpvLy ?? 0;
+      t.goi += r.sameGpvOi ?? 0; t.goil += r.sameGpvOiLy ?? 0;
+    }
   }
   return t;
+}
+
+/** Rows that have any sales at the chosen level (zero rows are hidden). */
+function hasSales(r: Cat3Row, level: Level): boolean {
+  return level === "all" ? !!(r.sales || r.salesLy) : !!(r.sameSales || r.sameSalesLy);
 }
 
 const toneOf = (v: number): "up" | "down" | "flat" => (Math.abs(v) < 0.00005 ? "flat" : v > 0 ? "up" : "down");
@@ -565,34 +600,112 @@ function MetricCells({ a }: { a: Agg }) {
   );
 }
 
-function HeadDrill({ head, cat, seg, onBack }: { head: HeadRow; cat: Cat3Row[]; seg: SegmentKey; onBack: () => void }) {
+/** Sort key value for a group or a row (name sorts alphabetically, handled separately). */
+function sortValue(a: Agg, key: SortKey): number {
+  if (key === "sales") return a.s;
+  if (key === "gpv") return a.gpv;
+  if (key === "gp") return a.s ? a.gpv / a.s : 0;
+  if (key === "gpvoi") return a.goi;
+  if (key === "goi") return a.s ? a.goi / a.s : 0;
+  return 0;
+}
+
+function sortCompare(x: { name: string; a: Agg }, y: { name: string; a: Agg }, sort: Sort): number {
+  const m = sort.dir === "asc" ? 1 : -1;
+  if (sort.key === "name") return x.name.localeCompare(y.name) * m;
+  return (sortValue(x.a, sort.key) - sortValue(y.a, sort.key)) * m;
+}
+
+function HeadDrill({ head, headSame, cat, seg, onBack }: { head: HeadRow; headSame: HeadRow | undefined; cat: Cat3Row[]; seg: SegmentKey; onBack: () => void }) {
+  const [level, setLevel] = useState<Level>(seg === "same" ? "same" : "all");
   const [crp, setCrp] = useState("");
   const [catName, setCatName] = useState("");
+  const [sort, setSort] = useState<Sort>({ key: "sales", dir: "desc" });
   const rows = useMemo(() => cat.filter((r) => r.division === head.division && r.head === head.head), [cat, head]);
+  const levelRows = useMemo(() => rows.filter((r) => hasSales(r, level)), [rows, level]);
+  const sales = (r: Cat3Row) => (level === "all" ? r.sales ?? 0 : r.sameSales ?? 0);
   const persons = useMemo(() => {
     const m = new Map<string, number>();
-    for (const r of rows) m.set(r.crp, (m.get(r.crp) ?? 0) + (r.sales ?? 0));
+    for (const r of levelRows) m.set(r.crp, (m.get(r.crp) ?? 0) + sales(r));
     return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k);
-  }, [rows]);
+  }, [levelRows, level]); // eslint-disable-line react-hooks/exhaustive-deps
   const cats = useMemo(
-    () => [...new Set(rows.filter((r) => !crp || r.crp === crp).map((r) => r.cat3))].sort(),
-    [rows, crp]
+    () => [...new Set(levelRows.filter((r) => !crp || r.crp === crp).map((r) => r.cat3))].sort(),
+    [levelRows, crp]
   );
-  const filtered = rows.filter((r) => (!crp || r.crp === crp) && (!catName || r.cat3 === catName));
+  const filtered = levelRows.filter((r) => (!crp || r.crp === crp) && (!catName || r.cat3 === catName));
   const groups = persons
     .filter((p) => !crp || p === crp)
-    .map((p) => ({ name: p, rs: filtered.filter((r) => r.crp === p).sort((a, b) => (b.sales ?? 0) - (a.sales ?? 0)) }))
-    .filter((g) => g.rs.length > 0);
-  const total = aggregate(filtered);
-  const all = aggregate(rows);
-  const gap = all.s - (head.sales ?? 0);
+    .map((p) => {
+      const rs = filtered.filter((r) => r.crp === p).map((r) => ({ name: r.cat3, a: aggregate([r], level), r }));
+      return { name: p, rs, a: aggregate(filtered.filter((r) => r.crp === p), level) };
+    })
+    .filter((g) => g.rs.length > 0)
+    .sort((x, y) => sortCompare({ name: x.name, a: x.a }, { name: y.name, a: y.a }, sort))
+    .map((g) => ({ ...g, rs: [...g.rs].sort((x, y) => sortCompare(x, y, sort)) }));
+
+  const total = aggregate(filtered, level);
+  const all = aggregate(levelRows, level);
+  const reference = level === "all" ? head.sales ?? 0 : headSame?.sales ?? null;
+  const gap = reference == null ? 0 : all.s - reference;
   const nm = (v: string) => titleCase(v);
 
-  if (seg !== "all") {
+  const toggle = (key: SortKey) => {
+    setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "name" ? "asc" : "desc" }));
+  };
+  const Th = ({ k, label, cls }: { k: SortKey; label: string; cls?: string }) => (
+    <th scope="col" className={cls} aria-sort={sort.key === k ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
+      <button className="sortbtn" onClick={() => toggle(k)}>
+        {label}{sort.key === k ? (sort.dir === "asc" ? " ▲" : " ▼") : ""}
+      </button>
+    </th>
+  );
+
+  const exportDrill = () => {
+    const metricCols: ExportCol[] = [
+      { header: "Sales", format: "money" }, { header: "Sales SPLY", format: "money" }, { header: "Sales growth", format: "pct" },
+      { header: "GPV", format: "money" }, { header: "GPV SPLY", format: "money" }, { header: "GPV growth", format: "pct" },
+      { header: "GP%", format: "pct" }, { header: "GP% SPLY", format: "pct" }, { header: "GP% change", format: "pct" },
+      { header: "GPV+OI", format: "money" }, { header: "GPV+OI SPLY", format: "money" }, { header: "GPV+OI growth", format: "pct" },
+      { header: "GP+OI%", format: "pct" }, { header: "GP+OI% SPLY", format: "pct" }, { header: "GP+OI% change", format: "pct" },
+    ];
+    const cols: ExportCol[] = [
+      { header: "Responsible person", format: "text" }, { header: "Category (Cat 3)", format: "text" },
+      { header: "Category group (Cat 1)", format: "text" }, ...metricCols,
+    ];
+    // same rules as the screen: growth is n/m when the base is small or the change is beyond ±500%
+    const values = (a: Agg): ExportCell[] => {
+      const gp = a.s ? a.gpv / a.s : null, gpl = a.sl ? a.gpvl / a.sl : null;
+      const goi = a.s ? a.goi / a.s : null, goil = a.sl ? a.goil / a.sl : null;
+      const gate = (n: number, l: number): number | string => {
+        if (l < SMALL_BASE) return "n/m";
+        const g = n / l - 1;
+        return Math.abs(g) > MAX_GROWTH ? "n/m" : g;
+      };
+      const point = (n: number | null, l: number | null): number | string => (n == null || l == null || a.sl < SMALL_BASE ? "n/m" : n - l);
+      return [
+        a.s, a.sl, gate(a.s, a.sl),
+        a.gpv, a.gpvl, gate(a.gpv, a.gpvl),
+        gp, gpl, point(gp, gpl),
+        a.goi, a.goil, gate(a.goi, a.goil),
+        goi, goil, point(goi, goil),
+      ];
+    };
+    const body: ExportCell[][] = [];
+    for (const g of groups) {
+      body.push([g.name, "", "", ...values(g.a)]);
+      for (const x of g.rs) body.push([g.name, nm(x.r.cat3), nm(x.r.cat1), ...values(x.a)]);
+    }
+    body.push(["Total", "", "", ...values(total)]);
+    const safe = head.head.replace(/[^A-Za-z0-9]+/g, "-");
+    downloadExcel(`head-${safe}-${level}.xlsx`, "Responsible persons", cols, body);
+  };
+
+  if (seg !== "all" && seg !== "same") {
     return (
       <div className="card">
         <button className="linkish" onClick={onBack}>← Back to all heads</button>
-        <p className="hint" style={{ marginTop: 12 }}>Responsible person detail is available for All stores only. Set the Store group to All stores.</p>
+        <p className="hint" style={{ marginTop: 12 }}>Responsible person detail is available for All stores and Same stores. Set the Store group to one of these.</p>
       </div>
     );
   }
@@ -603,10 +716,15 @@ function HeadDrill({ head, cat, seg, onBack }: { head: HeadRow; cat: Cat3Row[]; 
         <div>
           <button className="linkish" onClick={onBack}>← Back to all heads</button>
           <h2 style={{ marginTop: 8 }}>{head.head}</h2>
-          <p className="hint">{nm(head.division)} · {head.role} · responsible persons and categories (Cat 3) · SPLY · all stores</p>
+          <p className="hint">{nm(head.division)} · {head.role} · responsible persons and categories (Cat 3) · SPLY · {level === "all" ? "all stores" : "same stores"}</p>
         </div>
       </div>
+      <div className="xbar"><ExportButton onClick={exportDrill} /></div>
       <div className="drill-filters">
+        <div className="seg" role="group" aria-label="Store level">
+          <button aria-pressed={level === "all"} onClick={() => { setLevel("all"); setCrp(""); setCatName(""); }}>All stores</button>
+          <button aria-pressed={level === "same"} onClick={() => { setLevel("same"); setCrp(""); setCatName(""); }}>Same stores</button>
+        </div>
         <label>Responsible person
           <select value={crp} onChange={(e) => { setCrp(e.target.value); setCatName(""); }}>
             <option value="">All persons</option>
@@ -624,19 +742,26 @@ function HeadDrill({ head, cat, seg, onBack }: { head: HeadRow; cat: Cat3Row[]; 
       <div className="table-wrap">
         <table>
           <thead>
-            <tr><th className="l">Category (Cat 3)</th><th>Sales</th><th>GPV</th><th>GP%</th><th>GPV+OI</th><th>GP+OI%</th></tr>
+            <tr>
+              <Th k="name" label="Category (Cat 3)" cls="l" />
+              <Th k="sales" label="Sales" />
+              <Th k="gpv" label="GPV" />
+              <Th k="gp" label="GP%" />
+              <Th k="gpvoi" label="GPV+OI" />
+              <Th k="goi" label="GP+OI%" />
+            </tr>
           </thead>
           <tbody>
             {groups.map((g) => (
               <Fragment key={g.name}>
                 <tr className="drill-group">
                   <td className="l"><b>{g.name}</b><div className="sub">{g.rs.length} categor{g.rs.length === 1 ? "y" : "ies"}</div></td>
-                  <MetricCells a={aggregate(g.rs)} />
+                  <MetricCells a={g.a} />
                 </tr>
-                {g.rs.map((r, i) => (
+                {g.rs.map((x, i) => (
                   <tr key={g.name + i}>
-                    <td className="l"><div>{nm(r.cat3)}</div><div className="sub">{nm(r.cat1)}</div></td>
-                    <MetricCells a={aggregate([r])} />
+                    <td className="l"><div>{nm(x.r.cat3)}</div><div className="sub">{nm(x.r.cat1)}</div></td>
+                    <MetricCells a={x.a} />
                   </tr>
                 ))}
               </Fragment>
@@ -654,9 +779,9 @@ function HeadDrill({ head, cat, seg, onBack }: { head: HeadRow; cat: Cat3Row[]; 
       </div>
       {filtered.length === 0 && <p className="hint">No categories match these filters.</p>}
       {Math.abs(gap) >= 1 && (
-        <p className="hint">Category rows add up to {fm(all.s)}; the head row shows {fm(head.sales ?? 0)} (difference {fm(gap)}). The difference is in the source workbook.</p>
+        <p className="hint">Category rows add up to {fm(all.s)}; the head row shows {fm(reference ?? 0)} (difference {fm(gap)}). The difference is in the source workbook.</p>
       )}
-      <p className="hint">n/m = not meaningful: last year&apos;s base is below 100,000, or the change is beyond ±500%. GP% and GP+OI% changes are in %.</p>
+      <p className="hint">Click a column heading to sort ascending or descending. n/m = not meaningful: last year&apos;s base is below 100,000, or the change is beyond ±500%. Rows with no sales at this level are hidden.</p>
     </div>
   );
 }
