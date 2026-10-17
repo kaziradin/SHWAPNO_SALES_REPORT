@@ -255,78 +255,259 @@ function DivRow({ d }: { d: Metrics & { division: string } }) {
 
 /* ------------------------------------------------------------------ category heads */
 
+const ABBR: Record<string, string> = {
+  "COMPANY GOODS": "CG", "PACKED COMMODITY": "PC", "LOOSE COMMODITY": "LC",
+  "FRESH PRODUCE": "FP", "GENERAL MERCHANDISE": "GM", LIFESTYLE: "LS",
+};
+const abbrOf = (division: string) => ABBR[division.toUpperCase()] ?? division.slice(0, 2).toUpperCase();
+const roleName = (role: string) => {
+  const r = role.replace("Mechandising", "Merchandising");
+  return r === r.toUpperCase() ? titleCase(r) : r;
+};
+const crFmt = (v: number) => `${(v / 1e7).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Cr`;
+const crSigned = (v: number) => `${v >= 0 ? "+" : "−"}${crFmt(Math.abs(v))}`;
+const headLabel = (r: HeadRow) => `${abbrOf(r.division)} - ${roleName(r.role)} - ${r.head}`;
+const toneOfNum = (v: number | null | undefined): "up" | "down" | "flat" =>
+  v == null || !isFinite(v) || Math.abs(v) < 0.00005 ? "flat" : v > 0 ? "up" : "down";
+const arrowOf = (t: "up" | "down" | "flat") => (t === "up" ? "▲ " : t === "down" ? "▼ " : "");
+const ratioOf = (a: number, b: number) => (b ? a / b : null);
+
+type ChartItem = { label: string; now: number; last: number; chg: string; t: "up" | "down" | "flat"; nowText: string; lastText: string };
+
+/** Growth bars: this period (navy) against SPLY (grey) for one head. */
+function growthItem(r: HeadRow, now: number | null | undefined, last: number | null | undefined, fmtv: (v: number) => string): ChartItem {
+  const n = now ?? 0, l = last ?? 0;
+  const g = l ? n / l - 1 : null;
+  return { label: headLabel(r), now: n, last: l, chg: signedPct(g, 2), t: toneOfNum(g), nowText: fmtv(n), lastText: fmtv(l) };
+}
+
+/** Ratio bars (GP%, GP+OI%): the change shown is the difference between the two percentages. */
+function pointItem(r: HeadRow, now: number | null | undefined, last: number | null | undefined): ChartItem {
+  const n = now ?? 0, l = last ?? 0;
+  const d = now != null && last != null ? now - last : null;
+  return { label: headLabel(r), now: n, last: l, chg: signedPct(d, 2), t: toneOfNum(d), nowText: pct(n, 2), lastText: pct(l, 2) };
+}
+
+function wrapText(text: string, max: number): string[] {
+  const lines: string[] = [];
+  let cur = "";
+  for (const w of text.split(" ")) {
+    const cand = cur ? `${cur} ${w}` : w;
+    if (cand.length <= max || !cur) cur = cand;
+    else { lines.push(cur); cur = w; }
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+
+/** Full-width column chart: navy = this period, grey = SPLY; change above each pair; full label below. */
+function HeadChart({ title, sub, items, sLabel }: { title: string; sub: string; items: ChartItem[]; sLabel: string }) {
+  const W = 1000, top = 40, plotH = 220;
+  if (items.length === 0) return null;
+  const perLine = Math.max(12, Math.floor(W / items.length / 6.2));
+  const lines = items.map((it) => wrapText(it.label, perLine));
+  const maxLines = Math.max(...lines.map((l) => l.length));
+  const base = top + plotH;
+  const H = base + 18 + 13 * maxLines + 12;
+  const vmax = Math.max(1e-9, ...items.flatMap((it) => [Math.abs(it.now), Math.abs(it.last)]));
+  const gw = W / items.length;
+  const bw = Math.min(26, (gw - 14) / 2);
+  return (
+    <div className="ov-panel">
+      <h3>{title}<small>{sub}</small></h3>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={`${title}, this period against ${sLabel}`}>
+        {[0.25, 0.5, 0.75, 1].map((t) => (
+          <line key={t} x1={0} x2={W} y1={base - plotH * t} y2={base - plotH * t} className="ov-grid" />
+        ))}
+        <line x1={0} x2={W} y1={base} y2={base} className="ov-base" />
+        {items.map((it, i) => {
+          const cx = gw * i + gw / 2;
+          const hn = (plotH * Math.abs(it.now)) / vmax;
+          const hl = (plotH * Math.abs(it.last)) / vmax;
+          const topY = base - Math.max(hn, hl, 2);
+          const col = it.t === "up" ? "var(--ov-up)" : it.t === "down" ? "var(--ov-down)" : "var(--ov-ink2)";
+          return (
+            <g key={i}>
+              <title>{`${it.label}\nThis period: ${it.nowText}\n${sLabel}: ${it.lastText}\nChange: ${it.chg}`}</title>
+              <rect x={cx - bw - 1} y={base - hn} width={bw} height={Math.max(hn, 0)} rx={3} style={{ fill: "var(--this)" }} />
+              <rect x={cx + 1} y={base - hl} width={bw} height={Math.max(hl, 0)} rx={3} style={{ fill: "var(--last)" }} />
+              <text x={cx} y={topY - 8} textAnchor="middle" fontSize={12} style={{ fill: col, fontWeight: 600 }}>{it.chg}</text>
+              {lines[i].map((ln, k) => (
+                <text key={k} x={cx} y={base + 18 + 13 * k} textAnchor="middle" fontSize={10} className="ov-col-name">{ln}</text>
+              ))}
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+function Num({ value, change, t }: { value: string; change: string | null; t: "up" | "down" | "flat" }) {
+  return (
+    <td>
+      <div className="ov-td-val">{value}</div>
+      {change !== null && <div><span className={`delta ${t}`}>{arrowOf(t)}{change}</span></div>}
+    </td>
+  );
+}
+
 function Heads({ report, cmp }: { report: Report; cmp: Cmp }) {
   const s = CMP_LABEL[cmp].short;
   const blocks = report[cmp].headBlocks ?? {};
   const keys = (Object.keys(SEGMENT_LABELS) as SegmentKey[]).filter((k) => blocks[k]?.length);
   const [drill, setDrill] = useState<HeadRow | null>(null);
   const [seg, setSeg] = useState<SegmentKey>("all");
-  // the drill-down uses the Cat 3 sheet, which is SPLY only: it is not offered on SPLM
+  // the drill-down uses the Cat 3 sheet, which is SPLY only
+  useEffect(() => { if (cmp !== "sply") setDrill(null); }, [cmp]);
   if (drill && cmp === "sply") return <HeadDrill head={drill} cat={report.cat3 ?? []} seg={seg} onBack={() => setDrill(null)} />;
+
   const rows = blocks[seg] ?? [];
   const sum = (f: (r: HeadRow) => number | null | undefined) => rows.reduce((t, r) => t + (f(r) ?? 0), 0);
-  const S = sum((r) => r.sales), L = sum((r) => r.salesLast), FF = sum((r) => r.ff);
-  const GPV = sum((r) => r.gpv), GPVOI = sum((r) => r.gpvOi);
-  const nm = (v: string) => v.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+  const S = sum((r) => r.sales), L = sum((r) => r.salesLast);
+  const G = sum((r) => r.gpv), GL = sum((r) => r.gpvLast);
+  const GO = sum((r) => r.gpvOi), GOL = sum((r) => r.gpvOiLast);
+  const FF = sum((r) => r.ff), FFL = sum((r) => r.ffLast);
+  const companyTotal = report[cmp].segments[seg]?.total?.sales ?? null;
+  const gp = ratioOf(G, S), gpL = ratioOf(GL, L), goi = ratioOf(GO, S), goiL = ratioOf(GOL, L);
+  const grS = L ? S / L - 1 : null, grG = GL ? G / GL - 1 : null, grGO = GOL ? GO / GOL - 1 : null;
+  const ppOf = (a: number | null, b: number | null) => (a != null && b != null ? a - b : null);
+
+  const kpi = [
+    { label: `Sales · ${rows.length} heads`, value: crFmt(S), sply: `${s}: ${crFmt(L)}`, delta: `${crSigned(S - L)}   ${arrowOf(toneOfNum(grS))}${signedPct(grS, 2)}`, t: toneOfNum(grS) },
+    { label: "GP%", value: pct(gp, 2), sply: `${s}: ${pct(gpL, 2)}`, delta: signedPct(ppOf(gp, gpL), 2), t: toneOfNum(ppOf(gp, gpL)) },
+    { label: "GPV", value: crFmt(G), sply: `${s}: ${crFmt(GL)}`, delta: `${crSigned(G - GL)}   ${arrowOf(toneOfNum(grG))}${signedPct(grG, 2)}`, t: toneOfNum(grG) },
+    { label: "GP+OI%", value: pct(goi, 2), sply: `${s}: ${pct(goiL, 2)}`, delta: signedPct(ppOf(goi, goiL), 2), t: toneOfNum(ppOf(goi, goiL)) },
+    { label: "GPV+OI", value: crFmt(GO), sply: `${s}: ${crFmt(GOL)}`, delta: `${crSigned(GO - GOL)}   ${arrowOf(toneOfNum(grGO))}${signedPct(grGO, 2)}`, t: toneOfNum(grGO) },
+  ];
+
+  const attention = rows
+    .map((r) => ({ r, d: (r.gpOi ?? 0) - (r.gpOiLast ?? 0) }))
+    .filter((x) => x.d < -0.00005)
+    .sort((a, b) => a.d - b.d);
+
   const money = (v: number) => Math.round(v).toLocaleString("en-US");
-  const grow = (now: number | null | undefined, last: number | null | undefined) => {
-    const g = growth(now, last);
-    if (g == null || !isFinite(g)) return <span className="delta flat">–</span>;
-    const tone = Math.abs(g) < 0.00005 ? "flat" : g > 0 ? "up" : "down";
-    return <span className={`delta ${tone}`}>{tone === "up" ? "▲ " : tone === "down" ? "▼ " : ""}{signedPct(g, 2)}</span>;
+  const fmtMoney = (v: number) => money(v);
+  const gFrom = (n: number | null | undefined, l: number | null | undefined) => {
+    const g = l ? (n ?? 0) / l - 1 : null;
+    return { change: signedPct(g, 2), t: toneOfNum(g) };
+  };
+  const pFrom = (n: number | null | undefined, l: number | null | undefined) => {
+    const d = n != null && l != null ? n - l : null;
+    return { change: signedPct(d, 2), t: toneOfNum(d) };
   };
 
   return (
-    <div className="card">
-      <div className="card-head">
-        <div>
-          <h2>Category heads · {SEGMENT_LABELS[seg]}</h2>
-          <p className="hint">Compared with the {CMP_LABEL[cmp].long} ({s}). Growth = sales ÷ {s} − 1.</p>
-        </div>
-        <select value={seg} onChange={(e) => setSeg(e.target.value as SegmentKey)} aria-label="Store group">
-          {keys.map((k) => <option key={k} value={k}>{SEGMENT_LABELS[k]}</option>)}
-        </select>
+    <div className="ov">
+      <div className="drill-filters">
+        <label>Store group
+          <select value={seg} onChange={(e) => setSeg(e.target.value as SegmentKey)} aria-label="Store group">
+            {keys.map((k) => <option key={k} value={k}>{SEGMENT_LABELS[k]}</option>)}
+          </select>
+        </label>
       </div>
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th className="l">Division</th><th className="l">Category role</th><th className="l">Head</th>
-              <th>Sales</th><th>Sales {s}</th><th>Growth</th>
-              <th>Footfall</th><th>Basket</th>
-              <th>GP%</th><th>GP+OI%</th><th>GPV</th><th>GPV+OI</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r, i) => (
-              <tr key={i}>
-                <td className="l">{nm(r.division)}</td>
-                <td className="l name" title={r.role}>{r.role}</td>
-                <td className="l">{cmp === "sply" ? <button className="linkish" onClick={() => setDrill(r)}>{r.head}</button> : r.head}</td>
-                <td>{money(r.sales ?? 0)}</td>
-                <td>{money(r.salesLast ?? 0)}</td>
-                <td>{grow(r.sales, r.salesLast)}</td>
-                <td>{money(r.ff ?? 0)}</td>
-                <td>{money((r.sales ?? 0) / (r.ff || 1))}</td>
-                <td>{pct(r.gp, 2)}</td>
-                <td>{pct(r.gpOi, 2)}</td>
-                <td>{money(r.gpv ?? 0)}</td>
-                <td>{money(r.gpvOi ?? 0)}</td>
-              </tr>
+
+      <section className="ov-kpis five" aria-label="Category heads key figures">
+        {kpi.map((k) => (
+          <div className="ov-kpi" key={k.label}>
+            <div className="ov-kpi-label">{k.label}</div>
+            <div className="ov-kpi-value">{k.value}</div>
+            <div className="ov-kpi-cmp">{k.sply}</div>
+            <div className="ov-kpi-delta"><span className={`ov-chg ${k.t}`}>{k.delta}</span></div>
+          </div>
+        ))}
+      </section>
+      {companyTotal != null && (
+        <p className="ov-note">Heads total {money(S)} of the company total {money(companyTotal)}; the rest is outside category heads (for example Restaurant).</p>
+      )}
+
+      <section className="ov-attn" aria-labelledby="hattn">
+        <div className="ov-attn-head">
+          <h2 id="hattn">Needs attention</h2>
+          <span>Category heads where GP+OI% decreased vs {s}, largest decrease first</span>
+        </div>
+        {attention.length === 0 ? (
+          <p className="ov-attn-none">No category head has a lower GP+OI% than {s}.</p>
+        ) : (
+          <ul>
+            {attention.map(({ r, d }) => (
+              <li key={r.division + r.head}>
+                <span className="ov-attn-badge" aria-hidden>▼</span>
+                <b>{abbrOf(r.division)} · {r.head}</b>
+                <span className="ov-attn-metric">GP+OI%</span>
+                <span className="ov-attn-val">{signedPct(d, 2)}</span>
+              </li>
             ))}
-          </tbody>
-          {rows.length > 0 && (
-            <tfoot>
+          </ul>
+        )}
+      </section>
+
+      <div className="ov-section-head"><h2>Sales performance</h2></div>
+      <HeadChart title="Sales by category head" sub={`value and growth vs ${s}`} sLabel={s}
+        items={rows.map((r) => growthItem(r, r.sales, r.salesLast, fmtMoney))} />
+
+      <div className="ov-section-head"><h2>Traffic and basket</h2></div>
+      <HeadChart title="Footfall (FF)" sub={`invoices, growth vs ${s}`} sLabel={s}
+        items={rows.map((r) => growthItem(r, r.ff, r.ffLast, fmtMoney))} />
+      <HeadChart title="Basket size" sub={`sales per invoice, growth vs ${s}`} sLabel={s}
+        items={rows.map((r) => growthItem(r, r.bs, r.bsLast, fmtMoney))} />
+
+      <div className="ov-section-head"><h2>GPV and GPV+OI performance</h2></div>
+      <HeadChart title="GPV" sub={`growth vs ${s}`} sLabel={s}
+        items={rows.map((r) => growthItem(r, r.gpv, r.gpvLast, crFmt))} />
+      <HeadChart title="GP%" sub={`change vs ${s} (%)`} sLabel={s}
+        items={rows.map((r) => pointItem(r, r.gp, r.gpLast))} />
+      <HeadChart title="GPV+OI" sub={`growth vs ${s}`} sLabel={s}
+        items={rows.map((r) => growthItem(r, r.gpvOi, r.gpvOiLast, crFmt))} />
+      <HeadChart title="GP+OI%" sub={`change vs ${s} (%)`} sLabel={s}
+        items={rows.map((r) => pointItem(r, r.gpOi, r.gpOiLast))} />
+
+      <div className="ov-section-head"><h2>Head detail</h2></div>
+      <div className="ov-panel ov-table-panel">
+        <div className="ov-table-scroll">
+          <table className="ov-table">
+            <caption>
+              Category heads vs {s}.{cmp === "sply" ? " Click a head to see its responsible persons and categories." : " Responsible persons are available on SPLY."}
+            </caption>
+            <thead>
               <tr>
-                <td className="l">Total</td><td className="l"></td><td className="l"></td>
-                <td>{money(S)}</td><td>{money(L)}</td><td>{grow(S, L)}</td>
-                <td>{money(FF)}</td><td>{money(S / (FF || 1))}</td>
-                <td>{pct(GPV / (S || 1), 2)}</td><td>{pct(GPVOI / (S || 1), 2)}</td>
-                <td>{money(GPV)}</td><td>{money(GPVOI)}</td>
+                <th scope="col">Head</th><th scope="col">Sales</th><th scope="col">GPV</th><th scope="col">GP%</th>
+                <th scope="col">GPV+OI</th><th scope="col">GP+OI%</th><th scope="col">Footfall</th><th scope="col">Basket</th>
               </tr>
-            </tfoot>
-          )}
-        </table>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.division + r.head}>
+                  <th scope="row" style={{ textAlign: "left" }}>
+                    {cmp === "sply" ? <button className="linkish" onClick={() => setDrill(r)}>{r.head} ›</button> : r.head}
+                    <div className="sub">{titleCase(r.division)} · {roleName(r.role)}</div>
+                  </th>
+                  <Num value={money(r.sales ?? 0)} {...gFrom(r.sales, r.salesLast)} />
+                  <Num value={money(r.gpv ?? 0)} {...gFrom(r.gpv, r.gpvLast)} />
+                  <Num value={pct(r.gp, 2)} {...pFrom(r.gp, r.gpLast)} />
+                  <Num value={money(r.gpvOi ?? 0)} {...gFrom(r.gpvOi, r.gpvOiLast)} />
+                  <Num value={pct(r.gpOi, 2)} {...pFrom(r.gpOi, r.gpOiLast)} />
+                  <Num value={money(r.ff ?? 0)} {...gFrom(r.ff, r.ffLast)} />
+                  <Num value={money((r.sales ?? 0) / (r.ff || 1))} {...gFrom((r.sales ?? 0) / (r.ff || 1), (r.salesLast ?? 0) / (r.ffLast || 1))} />
+                </tr>
+              ))}
+            </tbody>
+            {rows.length > 0 && (
+              <tfoot>
+                <tr>
+                  <th scope="row" style={{ textAlign: "left" }}>Total ({rows.length} heads)</th>
+                  <Num value={money(S)} {...gFrom(S, L)} />
+                  <Num value={money(G)} {...gFrom(G, GL)} />
+                  <Num value={pct(gp, 2)} {...pFrom(gp, gpL)} />
+                  <Num value={money(GO)} {...gFrom(GO, GOL)} />
+                  <Num value={pct(goi, 2)} {...pFrom(goi, goiL)} />
+                  <Num value={money(FF)} {...gFrom(FF, FFL)} />
+                  <Num value={money(S / (FF || 1))} {...gFrom(S / (FF || 1), L / (FFL || 1))} />
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
       </div>
       {rows.length === 0 && <p className="hint">No category heads for this store group.</p>}
     </div>
