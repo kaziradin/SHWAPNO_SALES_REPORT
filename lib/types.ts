@@ -38,6 +38,7 @@ export type Cat3Row = {
   sameSales: number | null; sameSalesLy: number | null;
   gp: number | null; gpLy: number | null;
   gpv: number | null; gpvLy: number | null;
+  gpvOi: number | null; gpvOiLy: number | null;
 };
 
 /** The slice of a monthly snapshot the Overview needs (keeps the page payload small). */

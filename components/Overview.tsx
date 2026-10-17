@@ -103,7 +103,7 @@ export default function Overview({ data, cmp, segment }: { data: MonthOverview; 
               <div className="ov-kpi-value">{fmt(m.kind, now)}</div>
               <div className="ov-kpi-cmp">{s}: <span>{fmt(m.kind, last)}</span></div>
               <div className="ov-kpi-delta">
-                {m.kind === "money" && <span className={`ov-chg ${toneOf(d)}`}>{signedFull(d)}</span>}
+                {m.kind === "money" && <span className={`ov-chg ${toneOf(d)}`}>{m.crore ? crore(d, true) : signedFull(d)}</span>}
                 <Change kind={m.kind} v={change(m.kind, now, last)} />
               </div>
             </div>

@@ -224,6 +224,8 @@ def cat3(ws):
             "sameSales": num(r[9]), "sameSalesLy": num(r[10]),
             "gp": num(r[12]), "gpLy": num(r[13]),
             "gpv": num(r[24]), "gpvLy": num(r[25]),
+            # GPV + value adjustment (the workbook's "GP+OI" basis) for each category
+            "gpvOi": num(r[32]), "gpvOiLy": num(r[33]),
         })
     return out
 

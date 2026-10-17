@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import type { Cat3Row, HeadRow, Metrics, MonthOverview, Outlet, Report, SegmentKey } from "@/lib/types";
 import { diff, growth, int, longDate, monthName, pct, pp, signedPct, taka, titleCase } from "@/lib/format";
 import { DivergingBars, type TipRow } from "./charts";
@@ -259,7 +259,10 @@ function Heads({ report, cmp }: { report: Report; cmp: Cmp }) {
   const s = CMP_LABEL[cmp].short;
   const blocks = report[cmp].headBlocks ?? {};
   const keys = (Object.keys(SEGMENT_LABELS) as SegmentKey[]).filter((k) => blocks[k]?.length);
+  const [drill, setDrill] = useState<HeadRow | null>(null);
   const [seg, setSeg] = useState<SegmentKey>("all");
+  // the drill-down uses the Cat 3 sheet, which is SPLY only: it is not offered on SPLM
+  if (drill && cmp === "sply") return <HeadDrill head={drill} cat={report.cat3 ?? []} seg={seg} onBack={() => setDrill(null)} />;
   const rows = blocks[seg] ?? [];
   const sum = (f: (r: HeadRow) => number | null | undefined) => rows.reduce((t, r) => t + (f(r) ?? 0), 0);
   const S = sum((r) => r.sales), L = sum((r) => r.salesLast), FF = sum((r) => r.ff);
@@ -299,7 +302,7 @@ function Heads({ report, cmp }: { report: Report; cmp: Cmp }) {
               <tr key={i}>
                 <td className="l">{nm(r.division)}</td>
                 <td className="l name" title={r.role}>{r.role}</td>
-                <td className="l">{r.head}</td>
+                <td className="l">{cmp === "sply" ? <button className="linkish" onClick={() => setDrill(r)}>{r.head}</button> : r.head}</td>
                 <td>{money(r.sales ?? 0)}</td>
                 <td>{money(r.salesLast ?? 0)}</td>
                 <td>{grow(r.sales, r.salesLast)}</td>
@@ -326,6 +329,153 @@ function Heads({ report, cmp }: { report: Report; cmp: Cmp }) {
         </table>
       </div>
       {rows.length === 0 && <p className="hint">No category heads for this store group.</p>}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ head drill-down: Cat 3 by responsible person */
+
+const SMALL_BASE = 100000; // last-year base below this: growth is not meaningful
+const MAX_GROWTH = 5;      // changes beyond ±500% are not meaningful
+const fm = (v: number) => Math.round(v).toLocaleString("en-US");
+
+type Agg = { s: number; sl: number; gpv: number; gpvl: number; goi: number; goil: number };
+function aggregate(rs: Cat3Row[]): Agg {
+  const t = { s: 0, sl: 0, gpv: 0, gpvl: 0, goi: 0, goil: 0 };
+  for (const r of rs) {
+    t.s += r.sales ?? 0; t.sl += r.salesLy ?? 0;
+    t.gpv += r.gpv ?? 0; t.gpvl += r.gpvLy ?? 0;
+    t.goi += r.gpvOi ?? 0; t.goil += r.gpvOiLy ?? 0;
+  }
+  return t;
+}
+
+const toneOf = (v: number): "up" | "down" | "flat" => (Math.abs(v) < 0.00005 ? "flat" : v > 0 ? "up" : "down");
+
+/** Growth of a money value; n/m when the last-year base is small or the change is beyond ±500%. */
+function Growth({ now, last }: { now: number; last: number }) {
+  const g = last >= SMALL_BASE ? now / last - 1 : NaN;
+  if (!isFinite(g) || Math.abs(g) > MAX_GROWTH) return <span className="delta flat">n/m</span>;
+  const t = toneOf(g);
+  return <span className={`delta ${t}`}>{t === "up" ? "▲ " : t === "down" ? "▼ " : ""}{signedPct(g, 2)}</span>;
+}
+
+/** Change in percentage points, shown with a %; n/m when the sales base is small. */
+function PointChange({ now, last, base }: { now: number | null; last: number | null; base: number }) {
+  if (now == null || last == null || base < SMALL_BASE) return <span className="delta flat">n/m</span>;
+  const d = now - last;
+  const t = toneOf(d);
+  return <span className={`delta ${t}`}>{t === "up" ? "▲ " : t === "down" ? "▼ " : ""}{signedPct(d, 2)}</span>;
+}
+
+function MetricCells({ a }: { a: Agg }) {
+  const gp = a.s ? a.gpv / a.s : null;
+  const gpl = a.sl ? a.gpvl / a.sl : null;
+  const goi = a.s ? a.goi / a.s : null;
+  const goil = a.sl ? a.goil / a.sl : null;
+  return (
+    <>
+      <td><div>{fm(a.s)}</div><div><Growth now={a.s} last={a.sl} /></div></td>
+      <td><div>{fm(a.gpv)}</div><div><Growth now={a.gpv} last={a.gpvl} /></div></td>
+      <td><div>{pct(gp, 2)}</div><div><PointChange now={gp} last={gpl} base={a.sl} /></div></td>
+      <td><div>{fm(a.goi)}</div><div><Growth now={a.goi} last={a.goil} /></div></td>
+      <td><div>{pct(goi, 2)}</div><div><PointChange now={goi} last={goil} base={a.sl} /></div></td>
+    </>
+  );
+}
+
+function HeadDrill({ head, cat, seg, onBack }: { head: HeadRow; cat: Cat3Row[]; seg: SegmentKey; onBack: () => void }) {
+  const [crp, setCrp] = useState("");
+  const [catName, setCatName] = useState("");
+  const rows = useMemo(() => cat.filter((r) => r.division === head.division && r.head === head.head), [cat, head]);
+  const persons = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of rows) m.set(r.crp, (m.get(r.crp) ?? 0) + (r.sales ?? 0));
+    return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([k]) => k);
+  }, [rows]);
+  const cats = useMemo(
+    () => [...new Set(rows.filter((r) => !crp || r.crp === crp).map((r) => r.cat3))].sort(),
+    [rows, crp]
+  );
+  const filtered = rows.filter((r) => (!crp || r.crp === crp) && (!catName || r.cat3 === catName));
+  const groups = persons
+    .filter((p) => !crp || p === crp)
+    .map((p) => ({ name: p, rs: filtered.filter((r) => r.crp === p).sort((a, b) => (b.sales ?? 0) - (a.sales ?? 0)) }))
+    .filter((g) => g.rs.length > 0);
+  const total = aggregate(filtered);
+  const all = aggregate(rows);
+  const gap = all.s - (head.sales ?? 0);
+  const nm = (v: string) => titleCase(v);
+
+  if (seg !== "all") {
+    return (
+      <div className="card">
+        <button className="linkish" onClick={onBack}>← Back to all heads</button>
+        <p className="hint" style={{ marginTop: 12 }}>Responsible person detail is available for All stores only. Set the Store group to All stores.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="card">
+      <div className="card-head">
+        <div>
+          <button className="linkish" onClick={onBack}>← Back to all heads</button>
+          <h2 style={{ marginTop: 8 }}>{head.head}</h2>
+          <p className="hint">{nm(head.division)} · {head.role} · responsible persons and categories (Cat 3) · SPLY · all stores</p>
+        </div>
+      </div>
+      <div className="drill-filters">
+        <label>Responsible person
+          <select value={crp} onChange={(e) => { setCrp(e.target.value); setCatName(""); }}>
+            <option value="">All persons</option>
+            {persons.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+        </label>
+        <label>Category (Cat 3)
+          <select value={catName} onChange={(e) => setCatName(e.target.value)}>
+            <option value="">All categories</option>
+            {cats.map((c) => <option key={c} value={c}>{nm(c)}</option>)}
+          </select>
+        </label>
+        {(crp || catName) && <button className="linkish" onClick={() => { setCrp(""); setCatName(""); }}>Clear filters</button>}
+      </div>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr><th className="l">Category (Cat 3)</th><th>Sales</th><th>GPV</th><th>GP%</th><th>GPV+OI</th><th>GP+OI%</th></tr>
+          </thead>
+          <tbody>
+            {groups.map((g) => (
+              <Fragment key={g.name}>
+                <tr className="drill-group">
+                  <td className="l"><b>{g.name}</b><div className="sub">{g.rs.length} categor{g.rs.length === 1 ? "y" : "ies"}</div></td>
+                  <MetricCells a={aggregate(g.rs)} />
+                </tr>
+                {g.rs.map((r, i) => (
+                  <tr key={g.name + i}>
+                    <td className="l"><div>{nm(r.cat3)}</div><div className="sub">{nm(r.cat1)}</div></td>
+                    <MetricCells a={aggregate([r])} />
+                  </tr>
+                ))}
+              </Fragment>
+            ))}
+          </tbody>
+          {filtered.length > 0 && (
+            <tfoot>
+              <tr>
+                <td className="l">Total ({groups.length} persons, {filtered.length} categories)</td>
+                <MetricCells a={total} />
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+      {filtered.length === 0 && <p className="hint">No categories match these filters.</p>}
+      {Math.abs(gap) >= 1 && (
+        <p className="hint">Category rows add up to {fm(all.s)}; the head row shows {fm(head.sales ?? 0)} (difference {fm(gap)}). The difference is in the source workbook.</p>
+      )}
+      <p className="hint">n/m = not meaningful: last year&apos;s base is below 100,000, or the change is beyond ±500%. GP% and GP+OI% changes are in %.</p>
     </div>
   );
 }
