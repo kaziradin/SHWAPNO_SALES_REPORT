@@ -446,3 +446,8 @@ td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .exportbtn:hover { background: #EEF3FB; }
 .exportbtn:focus-visible { outline: 2px solid #1D4ED8; outline-offset: 2px; }
 .xbar { display: flex; justify-content: flex-end; margin: 0 0 10px; }
+
+/* Head drill-down: + / - toggle per responsible person */
+.plusbtn { display: inline-grid; place-items: center; width: 22px; height: 22px; margin-right: 8px; border-radius: 6px; border: 1px solid #D8E0EA; background: #fff; color: #1f3a5f; font: inherit; font-weight: 700; line-height: 1; cursor: pointer; vertical-align: middle; }
+.plusbtn:hover { background: #EEF3FB; }
+.plusbtn:focus-visible { outline: 2px solid #1D4ED8; outline-offset: 2px; }

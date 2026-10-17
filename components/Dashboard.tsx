@@ -8,7 +8,7 @@ import { downloadExcel, ExportButton, type ExportCell, type ExportCol } from "@/
 import FilterBar, { CMP_LABEL, SEGMENT_LABELS, type Cmp } from "./FilterBar";
 import Overview from "./Overview";
 
-type Tab = "overview" | "heads" | "outlets" | "categories";
+type Tab = "overview" | "heads" | "outlets";
 
 export default function Dashboard({ report, months }: { report: Report; months: MonthOverview[] }) {
   const [cmp, setCmp] = useState<Cmp>("sply");
@@ -101,7 +101,6 @@ export default function Dashboard({ report, months }: { report: Report; months: 
           ["overview", "Overview"],
           ["heads", "Category heads"],
           ["outlets", "Outlets & targets"],
-          ["categories", "Categories (Cat 3)"],
         ] as [Tab, string][]).map(([k, label]) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{label}</button>
         ))}
@@ -117,7 +116,6 @@ export default function Dashboard({ report, months }: { report: Report; months: 
       )}
       {tab === "heads" && <Heads report={report} cmp={cmp} />}
       {tab === "outlets" && <Outlets outlets={report.outlets} cmp={cmp} />}
-      {tab === "categories" && <Categories rows={report.cat3} />}
 
       <p className="foot">
         Source: {report.sourceFile} · data extracted {report.generatedAt.replace("T", " ")}
@@ -213,7 +211,7 @@ type ChartItem = { label: string; now: number; last: number; chg: string; t: "up
 /** Growth bars: this period (navy) against SPLY (grey) for one head. */
 function growthItem(r: HeadRow, now: number | null | undefined, last: number | null | undefined, fmtv: (v: number) => string): ChartItem {
   const n = now ?? 0, l = last ?? 0;
-  const g = l ? n / l - 1 : null;
+  const g = n && l ? n / l - 1 : null;
   return { label: headLabel(r), now: n, last: l, chg: signedPct(g, 2), t: toneOfNum(g), nowText: fmtv(n), lastText: fmtv(l) };
 }
 
@@ -289,7 +287,7 @@ function Num({ value, change, t }: { value: string; change: string | null; t: "u
 }
 
 /** Growth and percentage-point difference for Excel columns (null when there is no base). */
-const growthOf = (n?: number | null, l?: number | null): number | null => (n == null || l == null || !l ? null : n / l - 1);
+const growthOf = (n?: number | null, l?: number | null): number | null => (!n || !l ? null : n / l - 1);
 const diffOf = (n?: number | null, l?: number | null): number | null => (n == null || l == null ? null : n - l);
 
 type HeadSort = { key: "name" | "sales" | "gpv" | "gp" | "gpvoi" | "goi" | "ff" | "bs"; dir: "asc" | "desc" };
@@ -368,7 +366,7 @@ function Heads({ report, cmp }: { report: Report; cmp: Cmp }) {
   const money = (v: number) => Math.round(v).toLocaleString("en-US");
   const fmtMoney = (v: number) => money(v);
   const gFrom = (n: number | null | undefined, l: number | null | undefined) => {
-    const g = l ? (n ?? 0) / l - 1 : null;
+    const g = n && l ? n / l - 1 : null;
     return { change: signedPct(g, 2), t: toneOfNum(g) };
   };
   const pFrom = (n: number | null | undefined, l: number | null | undefined) => {
@@ -535,8 +533,6 @@ function Heads({ report, cmp }: { report: Report; cmp: Cmp }) {
 
 /* ------------------------------------------------------------------ head drill-down: Cat 3 by responsible person */
 
-const SMALL_BASE = 100000; // last-year base below this: growth is not meaningful
-const MAX_GROWTH = 5;      // changes beyond ±500% are not meaningful
 const fm = (v: number) => Math.round(v).toLocaleString("en-US");
 
 type Level = "all" | "same";
@@ -568,17 +564,17 @@ function hasSales(r: Cat3Row, level: Level): boolean {
 
 const toneOf = (v: number): "up" | "down" | "flat" => (Math.abs(v) < 0.00005 ? "flat" : v > 0 ? "up" : "down");
 
-/** Growth of a money value; n/m when the last-year base is small or the change is beyond ±500%. */
+/** Growth of a money value; blank where last year has no sales. */
 function Growth({ now, last }: { now: number; last: number }) {
-  const g = last >= SMALL_BASE ? now / last - 1 : NaN;
-  if (!isFinite(g) || Math.abs(g) > MAX_GROWTH) return <span className="delta flat">n/m</span>;
+  if (!now || !last) return null;
+  const g = now / last - 1;
   const t = toneOf(g);
   return <span className={`delta ${t}`}>{t === "up" ? "▲ " : t === "down" ? "▼ " : ""}{signedPct(g, 2)}</span>;
 }
 
-/** Change in percentage points, shown with a %; n/m when the sales base is small. */
-function PointChange({ now, last, base }: { now: number | null; last: number | null; base: number }) {
-  if (now == null || last == null || base < SMALL_BASE) return <span className="delta flat">n/m</span>;
+/** Change in percentage points, shown with a %; blank where a value is missing. */
+function PointChange({ now, last }: { now: number | null; last: number | null }) {
+  if (now == null || last == null) return null;
   const d = now - last;
   const t = toneOf(d);
   return <span className={`delta ${t}`}>{t === "up" ? "▲ " : t === "down" ? "▼ " : ""}{signedPct(d, 2)}</span>;
@@ -593,9 +589,9 @@ function MetricCells({ a }: { a: Agg }) {
     <>
       <td><div>{fm(a.s)}</div><div><Growth now={a.s} last={a.sl} /></div></td>
       <td><div>{fm(a.gpv)}</div><div><Growth now={a.gpv} last={a.gpvl} /></div></td>
-      <td><div>{pct(gp, 2)}</div><div><PointChange now={gp} last={gpl} base={a.sl} /></div></td>
+      <td><div>{pct(gp, 2)}</div><div><PointChange now={gp} last={gpl} /></div></td>
       <td><div>{fm(a.goi)}</div><div><Growth now={a.goi} last={a.goil} /></div></td>
-      <td><div>{pct(goi, 2)}</div><div><PointChange now={goi} last={goil} base={a.sl} /></div></td>
+      <td><div>{pct(goi, 2)}</div><div><PointChange now={goi} last={goil} /></div></td>
     </>
   );
 }
@@ -621,6 +617,7 @@ function HeadDrill({ head, headSame, cat, seg, onBack }: { head: HeadRow; headSa
   const [crp, setCrp] = useState("");
   const [catName, setCatName] = useState("");
   const [sort, setSort] = useState<Sort>({ key: "sales", dir: "desc" });
+  const [open, setOpen] = useState<Set<string>>(new Set());
   const rows = useMemo(() => cat.filter((r) => r.division === head.division && r.head === head.head), [cat, head]);
   const levelRows = useMemo(() => rows.filter((r) => hasSales(r, level)), [rows, level]);
   const sales = (r: Cat3Row) => (level === "all" ? r.sales ?? 0 : r.sameSales ?? 0);
@@ -673,16 +670,12 @@ function HeadDrill({ head, headSame, cat, seg, onBack }: { head: HeadRow; headSa
       { header: "Responsible person", format: "text" }, { header: "Category (Cat 3)", format: "text" },
       { header: "Category group (Cat 1)", format: "text" }, ...metricCols,
     ];
-    // same rules as the screen: growth is n/m when the base is small or the change is beyond ±500%
+    // growth as on screen: blank where last year has no sales
     const values = (a: Agg): ExportCell[] => {
       const gp = a.s ? a.gpv / a.s : null, gpl = a.sl ? a.gpvl / a.sl : null;
       const goi = a.s ? a.goi / a.s : null, goil = a.sl ? a.goil / a.sl : null;
-      const gate = (n: number, l: number): number | string => {
-        if (l < SMALL_BASE) return "n/m";
-        const g = n / l - 1;
-        return Math.abs(g) > MAX_GROWTH ? "n/m" : g;
-      };
-      const point = (n: number | null, l: number | null): number | string => (n == null || l == null || a.sl < SMALL_BASE ? "n/m" : n - l);
+      const gate = (n: number, l: number): number | null => (n && l ? n / l - 1 : null);
+      const point = (n: number | null, l: number | null): number | null => (n == null || l == null ? null : n - l);
       return [
         a.s, a.sl, gate(a.s, a.sl),
         a.gpv, a.gpvl, gate(a.gpv, a.gpvl),
@@ -722,9 +715,12 @@ function HeadDrill({ head, headSame, cat, seg, onBack }: { head: HeadRow; headSa
       <div className="xbar"><ExportButton onClick={exportDrill} /></div>
       <div className="drill-filters">
         <div className="seg" role="group" aria-label="Store level">
-          <button aria-pressed={level === "all"} onClick={() => { setLevel("all"); setCrp(""); setCatName(""); }}>All stores</button>
-          <button aria-pressed={level === "same"} onClick={() => { setLevel("same"); setCrp(""); setCatName(""); }}>Same stores</button>
+          <button aria-pressed={level === "all"} onClick={() => { setLevel("all"); setCrp(""); setCatName(""); setOpen(new Set()); setSort({ key: "sales", dir: "desc" }); }}>All stores</button>
+          <button aria-pressed={level === "same"} onClick={() => { setLevel("same"); setCrp(""); setCatName(""); setOpen(new Set()); setSort({ key: "sales", dir: "desc" }); }}>Same stores</button>
         </div>
+        <button className="linkish" onClick={() => setOpen(groups.length > 0 && groups.every((g) => open.has(g.name)) ? new Set() : new Set(groups.map((g) => g.name)))}>
+          {groups.length > 0 && groups.every((g) => open.has(g.name)) ? "Collapse all" : "Expand all"}
+        </button>
         <label>Responsible person
           <select value={crp} onChange={(e) => { setCrp(e.target.value); setCatName(""); }}>
             <option value="">All persons</option>
@@ -752,20 +748,33 @@ function HeadDrill({ head, headSame, cat, seg, onBack }: { head: HeadRow; headSa
             </tr>
           </thead>
           <tbody>
-            {groups.map((g) => (
-              <Fragment key={g.name}>
-                <tr className="drill-group">
-                  <td className="l"><b>{g.name}</b><div className="sub">{g.rs.length} categor{g.rs.length === 1 ? "y" : "ies"}</div></td>
-                  <MetricCells a={g.a} />
-                </tr>
-                {g.rs.map((x, i) => (
-                  <tr key={g.name + i}>
-                    <td className="l"><div>{nm(x.r.cat3)}</div><div className="sub">{nm(x.r.cat1)}</div></td>
-                    <MetricCells a={x.a} />
+            {groups.map((g) => {
+              const isOpen = open.has(g.name);
+              return (
+                <Fragment key={g.name}>
+                  <tr className="drill-group">
+                    <td className="l">
+                      <button
+                        className="plusbtn"
+                        aria-expanded={isOpen}
+                        aria-label={`${isOpen ? "Hide" : "Show"} categories of ${g.name}`}
+                        onClick={() => setOpen((o) => { const n2 = new Set(o); if (n2.has(g.name)) n2.delete(g.name); else n2.add(g.name); return n2; })}
+                      >
+                        {isOpen ? "−" : "+"}
+                      </button>
+                      <b>{g.name}</b><div className="sub">{g.rs.length} categor{g.rs.length === 1 ? "y" : "ies"}</div>
+                    </td>
+                    <MetricCells a={g.a} />
                   </tr>
-                ))}
-              </Fragment>
-            ))}
+                  {isOpen && g.rs.map((x, i) => (
+                    <tr key={g.name + i}>
+                      <td className="l"><div>{nm(x.r.cat3)}</div><div className="sub">{nm(x.r.cat1)}</div></td>
+                      <MetricCells a={x.a} />
+                    </tr>
+                  ))}
+                </Fragment>
+              );
+            })}
           </tbody>
           {filtered.length > 0 && (
             <tfoot>
@@ -781,7 +790,7 @@ function HeadDrill({ head, headSame, cat, seg, onBack }: { head: HeadRow; headSa
       {Math.abs(gap) >= 1 && (
         <p className="hint">Category rows add up to {fm(all.s)}; the head row shows {fm(reference ?? 0)} (difference {fm(gap)}). The difference is in the source workbook.</p>
       )}
-      <p className="hint">Click a column heading to sort ascending or descending. n/m = not meaningful: last year&apos;s base is below 100,000, or the change is beyond ±500%. Rows with no sales at this level are hidden.</p>
+      <p className="hint">Click a column heading to sort. Click + to show a person's categories. Rows with no sales at this level are hidden.</p>
     </div>
   );
 }
@@ -996,90 +1005,3 @@ function Outlets({ outlets, cmp }: { outlets: Outlet[]; cmp: Cmp }) {
   );
 }
 
-/* ------------------------------------------------------------------ cat 3 */
-
-function Categories({ rows }: { rows: Cat3Row[] }) {
-  const [q, setQ] = useState("");
-  const [division, setDivision] = useState("");
-  const [head, setHead] = useState("");
-  const [limit, setLimit] = useState(100);
-
-  const divisions = useMemo(() => [...new Set(rows.map((r) => r.division))].sort(), [rows]);
-  const heads = useMemo(() => [...new Set(rows.map((r) => r.head).filter(Boolean))].sort(), [rows]);
-
-  const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    return rows.filter((r) =>
-      (!needle || `${r.cat1} ${r.cat3} ${r.crp}`.toLowerCase().includes(needle)) &&
-      (!division || r.division === division) &&
-      (!head || r.head === head));
-  }, [rows, q, division, head]);
-
-  const tot = filtered.reduce((a, r) => ({ s: a.s + (r.sales ?? 0), l: a.l + (r.salesLy ?? 0) }), { s: 0, l: 0 });
-
-  const { sorted, th } = useSort(filtered, {
-    cat3: (r) => r.cat3, cat1: (r) => r.cat1, crp: (r) => r.crp,
-    sales: (r) => r.sales, ly: (r) => r.salesLy, g: (r) => growth(r.sales, r.salesLy),
-    sg: (r) => growth(r.sameSales, r.sameSalesLy), gp: (r) => r.gp, gpd: (r) => diff(r.gp, r.gpLy), gpv: (r) => r.gpv,
-  }, { key: "sales", dir: -1 });
-
-  return (
-    <div className="card">
-      <h2>Categories (Cat 3)</h2>
-      <p className="hint">Same period last year only (SPLY) — this sheet has no SPLM view. Same-store growth excludes new outlets.</p>
-      <div className="toolbar">
-        <input type="search" placeholder="Search category or responsible person" value={q} onChange={(e) => setQ(e.target.value)} />
-        <select value={division} onChange={(e) => setDivision(e.target.value)} aria-label="Division">
-          <option value="">All divisions</option>
-          {divisions.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
-        </select>
-        <select value={head} onChange={(e) => setHead(e.target.value)} aria-label="Head">
-          <option value="">All heads</option>
-          {heads.map((h) => <option key={h}>{h}</option>)}
-        </select>
-        <span className="count">
-          {filtered.length} categories · {taka(tot.s)} <Delta v={growth(tot.s, tot.l)} />
-        </span>
-      </div>
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              {th("cat3", "Category")}
-              {th("cat1", "Cat 1", "l")}
-              {th("crp", "Responsible", "l")}
-              {th("sales", "Sales")}
-              {th("ly", "Sales SPLY")}
-              {th("g", "Growth")}
-              {th("sg", "Same-store growth")}
-              {th("gp", "GP %")}
-              {th("gpd", "GP % chg")}
-              {th("gpv", "GP value")}
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.slice(0, limit).map((r, i) => (
-              <tr key={r.division + r.cat3 + i}>
-                <td className="name" title={r.cat3}>{r.cat3}</td>
-                <td className="l">{r.cat1}</td>
-                <td className="l">{r.crp}</td>
-                <td>{taka(r.sales)}</td>
-                <td>{taka(r.salesLy)}</td>
-                <td><Delta v={growth(r.sales, r.salesLy)} /></td>
-                <td><Delta v={growth(r.sameSales, r.sameSalesLy)} /></td>
-                <td>{pct(r.gp, 2)}</td>
-                <td><Delta v={diff(r.gp, r.gpLy)} kind="pp" /></td>
-                <td>{taka(r.gpv)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {sorted.length > limit && (
-        <div className="more">
-          <button onClick={() => setLimit(limit + 200)}>Show more ({sorted.length - limit} left)</button>
-        </div>
-      )}
-    </div>
-  );
-}

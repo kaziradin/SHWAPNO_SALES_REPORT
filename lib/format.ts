@@ -27,7 +27,8 @@ export function pp(v: number | null | undefined, digits = 2): string {
 }
 
 export function growth(now: number | null | undefined, last: number | null | undefined): number | null {
-  if (now == null || last == null || last === 0) return null;
+  // blank when either the current or the comparison value is missing or zero
+  if (!now || !last) return null;
   return now / last - 1;
 }
 
