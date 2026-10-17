@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { Cat3Row, Metrics, MonthOverview, Outlet, Report, SegmentKey } from "@/lib/types";
+import type { Cat3Row, HeadRow, Metrics, MonthOverview, Outlet, Report, SegmentKey } from "@/lib/types";
 import { diff, growth, int, longDate, monthName, pct, pp, signedPct, taka, titleCase } from "@/lib/format";
 import { DivergingBars, type TipRow } from "./charts";
 import FilterBar, { CMP_LABEL, SEGMENT_LABELS, type Cmp } from "./FilterBar";
@@ -257,59 +257,76 @@ function DivRow({ d }: { d: Metrics & { division: string } }) {
 
 function Heads({ report, cmp }: { report: Report; cmp: Cmp }) {
   const s = CMP_LABEL[cmp].short;
-  const heads = report[cmp].heads;
-  const items = heads
-    .map((h) => ({ h, g: growth(h.sales, h.salesLast) }))
-    .filter((x) => x.g != null)
-    .sort((a, b) => (b.g as number) - (a.g as number));
-  const label = (h: (typeof heads)[number]) => `${h.role} (${titleCase(h.division)})`;
+  const blocks = report[cmp].headBlocks ?? {};
+  const keys = (Object.keys(SEGMENT_LABELS) as SegmentKey[]).filter((k) => blocks[k]?.length);
+  const [seg, setSeg] = useState<SegmentKey>("all");
+  const rows = blocks[seg] ?? [];
+  const sum = (f: (r: HeadRow) => number | null | undefined) => rows.reduce((t, r) => t + (f(r) ?? 0), 0);
+  const S = sum((r) => r.sales), L = sum((r) => r.salesLast), FF = sum((r) => r.ff);
+  const GPV = sum((r) => r.gpv), GPVOI = sum((r) => r.gpvOi);
+  const nm = (v: string) => v.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase());
+  const money = (v: number) => Math.round(v).toLocaleString("en-US");
+  const grow = (now: number | null | undefined, last: number | null | undefined) => {
+    const g = growth(now, last);
+    if (g == null || !isFinite(g)) return <span className="delta flat">–</span>;
+    const tone = Math.abs(g) < 0.00005 ? "flat" : g > 0 ? "up" : "down";
+    return <span className={`delta ${tone}`}>{tone === "up" ? "▲ " : tone === "down" ? "▼ " : ""}{signedPct(g, 2)}</span>;
+  };
 
   return (
-    <>
-      <div className="card">
-        <h2>Sales growth by category role</h2>
-        <p className="hint">All stores, vs {s}. Hover a bar for the responsible head and details.</p>
-        <DivergingBars
-          labelWidth={230}
-          items={items.map(({ h, g }) => ({ label: label(h), value: g as number }))}
-          format={(v) => signedPct(v)}
-          tipRows={(i) => [["Head", items[i].h.head], ...metricTip(items[i].h, cmp)]}
-        />
-      </div>
-      <div className="card">
-        <h2>Category heads</h2>
-        <p className="hint">All stores, vs {s}</p>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Division</th><th className="l">Category role</th><th className="l">Head</th>
-                <th>Sales</th><th>Sales {s}</th><th>Growth</th>
-                <th>Footfall</th><th>FF growth</th>
-                <th>GP %</th><th>GP % chg</th><th>GP value</th>
-              </tr>
-            </thead>
-            <tbody>
-              {heads.map((h, i) => (
-                <tr key={i}>
-                  <td>{titleCase(h.division)}</td>
-                  <td className="l name" title={h.role}>{h.role}</td>
-                  <td className="l">{h.head}</td>
-                  <td>{taka(h.sales)}</td>
-                  <td>{taka(h.salesLast)}</td>
-                  <td><Delta v={growth(h.sales, h.salesLast)} /></td>
-                  <td>{int(h.ff)}</td>
-                  <td><Delta v={growth(h.ff, h.ffLast)} /></td>
-                  <td>{pct(h.gp, 2)}</td>
-                  <td><Delta v={diff(h.gp, h.gpLast)} kind="pp" /></td>
-                  <td>{taka(h.gpv)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    <div className="card">
+      <div className="card-head">
+        <div>
+          <h2>Category heads · {SEGMENT_LABELS[seg]}</h2>
+          <p className="hint">Compared with the {CMP_LABEL[cmp].long} ({s}). Growth = sales ÷ {s} − 1.</p>
         </div>
+        <select value={seg} onChange={(e) => setSeg(e.target.value as SegmentKey)} aria-label="Store group">
+          {keys.map((k) => <option key={k} value={k}>{SEGMENT_LABELS[k]}</option>)}
+        </select>
       </div>
-    </>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th className="l">Division</th><th className="l">Category role</th><th className="l">Head</th>
+              <th>Sales</th><th>Sales {s}</th><th>Growth</th>
+              <th>Footfall</th><th>Basket</th>
+              <th>GP%</th><th>GP+OI%</th><th>GPV</th><th>GPV+OI</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i}>
+                <td className="l">{nm(r.division)}</td>
+                <td className="l name" title={r.role}>{r.role}</td>
+                <td className="l">{r.head}</td>
+                <td>{money(r.sales ?? 0)}</td>
+                <td>{money(r.salesLast ?? 0)}</td>
+                <td>{grow(r.sales, r.salesLast)}</td>
+                <td>{money(r.ff ?? 0)}</td>
+                <td>{money((r.sales ?? 0) / (r.ff || 1))}</td>
+                <td>{pct(r.gp, 2)}</td>
+                <td>{pct(r.gpOi, 2)}</td>
+                <td>{money(r.gpv ?? 0)}</td>
+                <td>{money(r.gpvOi ?? 0)}</td>
+              </tr>
+            ))}
+          </tbody>
+          {rows.length > 0 && (
+            <tfoot>
+              <tr>
+                <td className="l">Total</td><td className="l"></td><td className="l"></td>
+                <td>{money(S)}</td><td>{money(L)}</td><td>{grow(S, L)}</td>
+                <td>{money(FF)}</td><td>{money(S / (FF || 1))}</td>
+                <td>{pct(GPV / (S || 1), 2)}</td><td>{pct(GPVOI / (S || 1), 2)}</td>
+                <td>{money(GPV)}</td><td>{money(GPVOI)}</td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+      {rows.length === 0 && <p className="hint">No category heads for this store group.</p>}
+    </div>
   );
 }
 

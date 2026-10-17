@@ -113,7 +113,7 @@ export default function Overview({ data, cmp, segment }: { data: MonthOverview; 
 
       <Attention rows={rows} s={s} />
 
-      <OwnFranchise data={data} cmp={cmp} />
+      <OwnFranchise data={data} cmp={cmp} segment={segment} />
 
       {/* Performance: one dominant chart (8) + supporting ranking (4) */}
       <SectionHead title="Sales performance" s={s} />
@@ -218,19 +218,48 @@ function Attention({ rows, s }: { rows: Row[]; s: string }) {
 }
 
 /**
- * Own vs Franchise snapshot. Always compares the two store types (independent of the
- * Store group filter); follows the month and the SPLY/SPLM comparison.
+ * Which pair of store types the Own vs Franchise panel compares, by the Store group filter.
+ * "picked" marks the side that the filter itself selects (Own or Franchise).
  */
-function OwnFranchise({ data, cmp }: { data: MonthOverview; cmp: Cmp }) {
+const OWN_FRAN_PAIRS: Partial<Record<SegmentKey, { own: SegmentKey; fran: SegmentKey; scope: string; picked: "own" | "fran" | null }>> = {
+  all: { own: "own", fran: "franchise", scope: "All stores", picked: null },
+  own: { own: "own", fran: "franchise", scope: "All stores", picked: "own" },
+  franchise: { own: "own", fran: "franchise", scope: "All stores", picked: "fran" },
+  same: { own: "ownSame", fran: "franchiseSame", scope: "Same stores", picked: null },
+  ownSame: { own: "ownSame", fran: "franchiseSame", scope: "Same stores", picked: "own" },
+  franchiseSame: { own: "ownSame", fran: "franchiseSame", scope: "Same stores", picked: "fran" },
+  newOwn: { own: "newOwn", fran: "newFranchise", scope: "New stores", picked: "own" },
+  newFranchise: { own: "newOwn", fran: "newFranchise", scope: "New stores", picked: "fran" },
+};
+
+/**
+ * Own vs Franchise snapshot. Follows the Store group filter: the pair shown is the
+ * own and franchise version of the selected group. Follows the month and SPLY/SPLM too.
+ */
+function OwnFranchise({ data, cmp, segment }: { data: MonthOverview; cmp: Cmp; segment: SegmentKey }) {
   const segs = data[cmp].segments;
   const s = CMP_LABEL[cmp].short;
-  const own = segs.own, fran = segs.franchise;
-  const all = segs.all?.total?.sales ?? null;
-  if (!own?.total || !fran?.total) return null;
-  const share = (v: number | null) => (v == null || !all ? null : v / all);
+  const pair = OWN_FRAN_PAIRS[segment] ?? OWN_FRAN_PAIRS.all!;
+  const own = segs[pair.own], fran = segs[pair.fran];
+  const scope = pair.scope.toLowerCase();
+
+  if (!own?.total || !fran?.total) {
+    return (
+      <section className="ovf" aria-labelledby="ovf-h">
+        <div className="ovf-title">
+          <h2 id="ovf-h">Own vs Franchise</h2>
+          <span>No own and franchise data for {scope} in this month.</span>
+        </div>
+      </section>
+    );
+  }
+
+  const ownSales = own.total.sales ?? 0, franSales = fran.total.sales ?? 0;
+  const pairSales = ownSales + franSales;
+  const share = (v: number | null | undefined) => (v == null || !pairSales ? null : v / pairSales);
   const ownShare = share(own.total.sales), franShare = share(fran.total.sales);
 
-  const side = (label: string, t: Metrics, sh: number | null) => {
+  const side = (segKey: SegmentKey, t: Metrics, sh: number | null, picked: boolean) => {
     const line = (m: Metric, name = m.label) => {
       const now = val(t, m.now), last = lastVal(t, m);
       return (
@@ -242,8 +271,11 @@ function OwnFranchise({ data, cmp }: { data: MonthOverview; cmp: Cmp }) {
       );
     };
     return (
-      <div className="ovf-side">
-        <div className="ovf-head"><b>{label}</b><span>{pct(sh, 2)} of sales</span></div>
+      <div className={`ovf-side${picked ? " picked" : ""}`}>
+        <div className="ovf-head">
+          <b>{SEGMENT_LABELS[segKey]}{picked && <em className="ovf-tag">Selected</em>}</b>
+          <span>{pct(sh, 2)} share</span>
+        </div>
         {line(SALES)}
         {line(GP)}
         {line(GPOI)}
@@ -264,13 +296,13 @@ function OwnFranchise({ data, cmp }: { data: MonthOverview; cmp: Cmp }) {
     <section className="ovf" aria-labelledby="ovf-h">
       <div className="ovf-title">
         <h2 id="ovf-h">Own vs Franchise</h2>
-        <span>Totals by store type vs {s} · always compares both types, whatever the Store group filter</span>
+        <span>{pair.scope} · totals vs {s} · changes with the Store group filter</span>
       </div>
       <div className="ovf-grid">
-        {side("Own stores", own.total, ownShare)}
-        {side("Franchise stores", fran.total, franShare)}
+        {side(pair.own, own.total, ownShare, pair.picked === "own")}
+        {side(pair.fran, fran.total, franShare, pair.picked === "fran")}
       </div>
-      <div className="ovf-share" role="img" aria-label={`Share of sales: own ${pct(ownShare, 2)}, franchise ${pct(franShare, 2)}`}>
+      <div className="ovf-share" role="img" aria-label={`Share: ${SEGMENT_LABELS[pair.own]} ${pct(ownShare, 2)}, ${SEGMENT_LABELS[pair.fran]} ${pct(franShare, 2)}`}>
         <span className="own" style={{ width: `${(ownShare ?? 0) * 100}%` }}>Own {pct(ownShare, 2)}</span>
         <span className="fran" style={{ width: `${(franShare ?? 0) * 100}%` }}>Franchise {pct(franShare, 2)}</span>
       </div>
@@ -281,8 +313,8 @@ function OwnFranchise({ data, cmp }: { data: MonthOverview; cmp: Cmp }) {
             <thead>
               <tr>
                 <th scope="col">Division</th>
-                <th scope="col">Own sales</th><th scope="col">Franchise sales</th>
-                <th scope="col">Own GP+OI%</th><th scope="col">Franchise GP+OI%</th>
+                <th scope="col">{SEGMENT_LABELS[pair.own]} sales</th><th scope="col">{SEGMENT_LABELS[pair.fran]} sales</th>
+                <th scope="col">{SEGMENT_LABELS[pair.own]} GP+OI%</th><th scope="col">{SEGMENT_LABELS[pair.fran]} GP+OI%</th>
               </tr>
             </thead>
             <tbody>

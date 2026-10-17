@@ -118,6 +118,29 @@ def comparison(ws):
     return label.strip(), out
 
 
+def heads_blocks(ws):
+    """Every store block of a CAT HEAD WISE sheet: category role rows with head and key metrics."""
+    rows = rows_of(ws)
+    out, seg, cols = {}, None, {}
+    for r in rows:
+        a = norm(r[0])
+        if a in SEGMENTS and norm(r[1]) == "CATEGORY ROLE":
+            seg, cols = SEGMENTS[a], header_map(r)
+            out[seg] = []
+            continue
+        if seg is None:
+            continue
+        if not a or a == "TOTALS":
+            seg = None
+            continue
+        rec = {k: num(r[i], 10) for k, i in cols.items() if i < len(r)}
+        if rec.get("sales") is None:
+            continue
+        out[seg].append({"division": str(r[0]).strip(), "role": str(r[1] or "").strip(),
+                         "head": str(r[2] or "").strip(), **rec})
+    return out
+
+
 def category_heads(ws):
     """ALL STORE block of the CAT HEAD WISE sheets."""
     rows = rows_of(ws)
@@ -224,9 +247,11 @@ def main():
         "periodLabel": re.split(r"\s+vs\s+", sply_label.replace("Same Day SPLY", ""), flags=re.I)[0].strip(),
         "target": company,
         "sply": {"label": sply_label, "segments": sply,
-                 "heads": category_heads(wb["SPLY -CAT HEAD WISE"])},
+                 "heads": category_heads(wb["SPLY -CAT HEAD WISE"]),
+                 "headBlocks": heads_blocks(wb["SPLY -CAT HEAD WISE"])},
         "splm": {"label": splm_label, "segments": splm,
-                 "heads": category_heads(wb["SPLM-CAT HEAD WISE"])},
+                 "heads": category_heads(wb["SPLM-CAT HEAD WISE"]),
+                 "headBlocks": heads_blocks(wb["SPLM-CAT HEAD WISE"])},
         "outlets": outlet_rows,
         "cat3": cat3(wb["CAT 3 Responsible Person Wise"]),
     }

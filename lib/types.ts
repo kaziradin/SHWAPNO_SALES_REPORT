@@ -20,6 +20,7 @@ export type Comparison = {
   label: string;
   segments: Partial<Record<SegmentKey, { divisions: DivisionRow[]; total: Metrics | null }>>;
   heads: HeadRow[];
+  headBlocks?: Partial<Record<SegmentKey, HeadRow[]>>;
 };
 
 export type Outlet = {
