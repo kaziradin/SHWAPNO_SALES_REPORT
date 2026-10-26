@@ -65,3 +65,23 @@ export type Report = {
   outlets: Outlet[];
   cat3: Cat3Row[];
 };
+
+/** Day-wise values from the workbook: one array per field, one value per day of the period. */
+export type DayFields = {
+  sales: (number | null)[]; splySales: (number | null)[];
+  gpv: (number | null)[]; splyGpv: (number | null)[];
+  valueAdj: (number | null)[]; splyValueAdj: (number | null)[];
+  ff: (number | null)[]; splyFf: (number | null)[];
+};
+
+export type DailyHead = DayFields & { division: string; role: string; head: string };
+
+export type DailyData = {
+  generatedAt: string;
+  sourceFile: string;
+  asOf: string;
+  periodLabel: string;
+  /** The day of this month and the same day last year that the workbook compares it with. */
+  days: { date: string; sply: string }[];
+  groups: Record<"all" | "same", { total: DayFields; heads: DailyHead[] }>;
+};

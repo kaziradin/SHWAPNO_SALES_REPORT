@@ -59,6 +59,27 @@ export function signedFull(v: number | null | undefined): string {
   return `${r > 0 ? "+" : r < 0 ? "−" : ""}${Math.abs(r).toLocaleString("en-US")}`;
 }
 
+/* ---- Shared labels and tones (category heads and the daily tab) ---- */
+
+const ABBR: Record<string, string> = {
+  "COMPANY GOODS": "CG", "PACKED COMMODITY": "PC", "LOOSE COMMODITY": "LC",
+  "FRESH PRODUCE": "FP", "GENERAL MERCHANDISE": "GM", LIFESTYLE: "LS",
+};
+export const abbrOf = (division: string) => ABBR[division.toUpperCase()] ?? division.slice(0, 2).toUpperCase();
+
+export const roleName = (role: string) => {
+  const r = role.replace("Mechandising", "Merchandising");
+  return r === r.toUpperCase() ? titleCase(r) : r;
+};
+
+/** 12.34 Cr, from taka */
+export const crFmt = (v: number) => `${(v / 1e7).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Cr`;
+export const crSigned = (v: number) => `${v >= 0 ? "+" : "−"}${crFmt(Math.abs(v))}`;
+
+export const toneOfNum = (v: number | null | undefined): "up" | "down" | "flat" =>
+  v == null || !isFinite(v) || Math.abs(v) < 0.00005 ? "flat" : v > 0 ? "up" : "down";
+export const arrowOf = (t: "up" | "down" | "flat") => (t === "up" ? "▲ " : t === "down" ? "▼ " : "");
+
 export function monthName(ym: string): string {
   const [y, m] = ym.split("-").map(Number);
   return new Date(y, m - 1, 1).toLocaleDateString("en-GB", { month: "long", year: "numeric" });

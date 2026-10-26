@@ -1,10 +1,11 @@
 @echo off
-rem Refresh the dashboard after replacing "1. SALES FILE\Business Performance Report.xlsx".
-rem Reads the Excel file, updates data\ (monthly snapshot, months index, report.json) and pushes it to GitHub (the Pages workflow redeploys).
+rem Refresh the dashboard after replacing "1. SALES FILE\Business Performance Report.xlsx" and "1. SALES FILE\Day wise Sales GP Trend.xlsx".
+rem Reads both Excel files, updates data\ (monthly snapshot, months index, report.json, daily.json) and pushes it to GitHub (the Pages workflow redeploys).
 cd /d "%~dp0"
 set "PATH=C:\Program Files\nodejs;C:\Program Files\Git\cmd;%PATH%"
 
 python scripts\extract.py || goto :fail
+python scripts\extract_daily.py || goto :fail
 
 git add data
 git diff --cached --quiet && (echo No changes in the data. & goto :done)

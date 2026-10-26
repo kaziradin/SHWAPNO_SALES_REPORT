@@ -1,16 +1,19 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useState } from "react";
-import type { Cat3Row, HeadRow, Metrics, MonthOverview, Outlet, Report, SegmentKey } from "@/lib/types";
-import { diff, growth, int, longDate, monthName, pct, pp, signedPct, taka, titleCase } from "@/lib/format";
+import type { Cat3Row, DailyData, HeadRow, Metrics, MonthOverview, Outlet, Report, SegmentKey } from "@/lib/types";
+import {
+  abbrOf, arrowOf, crFmt, crSigned, diff, growth, int, longDate, monthName, pct, pp, roleName, signedPct, taka, titleCase, toneOfNum,
+} from "@/lib/format";
 import { DivergingBars, useTooltip, type TipRow } from "./charts";
 import { downloadExcel, ExportButton, type ExportCell, type ExportCol } from "@/lib/export";
 import FilterBar, { CMP_LABEL, SEGMENT_LABELS, type Cmp } from "./FilterBar";
 import Overview from "./Overview";
+import Daily from "./Daily";
 
-type Tab = "overview" | "heads" | "outlets";
+type Tab = "overview" | "heads" | "daily" | "outlets";
 
-export default function Dashboard({ report, months }: { report: Report; months: MonthOverview[] }) {
+export default function Dashboard({ report, months, daily }: { report: Report; months: MonthOverview[]; daily: DailyData }) {
   const [cmp, setCmp] = useState<Cmp>("sply");
   const [segment, setSegment] = useState<SegmentKey>("all");
   const [tab, setTab] = useState<Tab>("overview");
@@ -82,10 +85,12 @@ export default function Dashboard({ report, months }: { report: Report; months: 
           <div className="sub">
             {tab === "overview" && monthData
               ? <>Till {longDate(monthData.asOf)} · {monthData.periodLabel} · compared with the {CMP_LABEL[cmp].long}</>
-              : <>Till {longDate(report.asOf)} · {report.periodLabel} · compared with the {CMP_LABEL[cmp].long}</>}
+              : tab === "daily"
+                ? <>Till {longDate(daily.asOf)} · {daily.periodLabel} · each day compared with the same day last year</>
+                : <>Till {longDate(report.asOf)} · {report.periodLabel} · compared with the {CMP_LABEL[cmp].long}</>}
           </div>
         </div>
-        {tab !== "overview" && <div className="controls">
+        {tab !== "overview" && tab !== "daily" && <div className="controls">
           <div className="seg" role="group" aria-label="Comparison period">
             {(["sply", "splm"] as Cmp[]).map((c) => (
               <button key={c} aria-pressed={cmp === c} onClick={() => setCmp(c)} title={CMP_LABEL[c].long}>
@@ -100,6 +105,7 @@ export default function Dashboard({ report, months }: { report: Report; months: 
         {([
           ["overview", "Overview"],
           ["heads", "Category heads"],
+          ["daily", "Daily sales"],
           ["outlets", "Outlets & targets"],
         ] as [Tab, string][]).map(([k, label]) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{label}</button>
@@ -115,10 +121,12 @@ export default function Dashboard({ report, months }: { report: Report; months: 
         </>
       )}
       {tab === "heads" && <Heads report={report} cmp={cmp} />}
+      {tab === "daily" && <Daily daily={daily} />}
       {tab === "outlets" && <Outlets outlets={report.outlets} cmp={cmp} />}
 
       <p className="foot">
-        Source: {report.sourceFile} · data extracted {report.generatedAt.replace("T", " ")}
+        Source: {tab === "daily" ? daily.sourceFile : report.sourceFile} · data extracted{" "}
+        {(tab === "daily" ? daily.generatedAt : report.generatedAt).replace("T", " ")}
       </p>
     </main>
     </div>
@@ -189,21 +197,7 @@ function useSort<T, K extends string>(rows: T[], get: Record<K, (r: T) => number
 
 /* ------------------------------------------------------------------ category heads */
 
-const ABBR: Record<string, string> = {
-  "COMPANY GOODS": "CG", "PACKED COMMODITY": "PC", "LOOSE COMMODITY": "LC",
-  "FRESH PRODUCE": "FP", "GENERAL MERCHANDISE": "GM", LIFESTYLE: "LS",
-};
-const abbrOf = (division: string) => ABBR[division.toUpperCase()] ?? division.slice(0, 2).toUpperCase();
-const roleName = (role: string) => {
-  const r = role.replace("Mechandising", "Merchandising");
-  return r === r.toUpperCase() ? titleCase(r) : r;
-};
-const crFmt = (v: number) => `${(v / 1e7).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Cr`;
-const crSigned = (v: number) => `${v >= 0 ? "+" : "−"}${crFmt(Math.abs(v))}`;
 const headLabel = (r: HeadRow) => `${abbrOf(r.division)} - ${roleName(r.role)} - ${r.head}`;
-const toneOfNum = (v: number | null | undefined): "up" | "down" | "flat" =>
-  v == null || !isFinite(v) || Math.abs(v) < 0.00005 ? "flat" : v > 0 ? "up" : "down";
-const arrowOf = (t: "up" | "down" | "flat") => (t === "up" ? "▲ " : t === "down" ? "▼ " : "");
 const ratioOf = (a: number, b: number) => (b ? a / b : null);
 
 type ChartKind = "crore" | "full" | "pct";

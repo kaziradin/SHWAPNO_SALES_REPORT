@@ -2,7 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import Dashboard from "@/components/Dashboard";
 import data from "@/data/report.json";
-import type { MonthOverview, Report } from "@/lib/types";
+import daily from "@/data/daily.json";
+import type { DailyData, MonthOverview, Report } from "@/lib/types";
 
 // Read every monthly snapshot at build time; the Overview only needs the SPLY/SPLM blocks.
 function loadMonths(): MonthOverview[] {
@@ -25,5 +26,5 @@ function loadMonths(): MonthOverview[] {
 }
 
 export default function Page() {
-  return <Dashboard report={data as unknown as Report} months={loadMonths()} />;
+  return <Dashboard report={data as unknown as Report} months={loadMonths()} daily={daily as unknown as DailyData} />;
 }
