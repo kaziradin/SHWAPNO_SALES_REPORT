@@ -5,26 +5,19 @@ import type { DailyData, DayFields } from "@/lib/types";
 import { abbrOf, arrowOf, crFmt, crSigned, full, growth, pct, roleName, signedPct, toneOfNum } from "@/lib/format";
 import { useTooltip, type TipRow } from "./charts";
 import { downloadExcel, ExportButton, type ExportCell, type ExportCol } from "@/lib/export";
+import {
+  Cell, dayLong, dayNum, dayShort, difference, diffChg, Figures, growthChg, Ratios, ratiosOf, SortState, SortTh, sumFigures,
+} from "@/lib/daily";
+import DailyDetail from "./DailyDetail";
 
 type Group = "all" | "same";
 const GROUP_LABEL: Record<Group, string> = { all: "All stores", same: "Same stores" };
 const TOTAL = "total";
 
-/** Figures for one day, or for the period when summed. GPV+OI is GPV plus value adj, as in the workbook. */
-type Figures = {
-  sales: number | null; splySales: number | null;
-  gpv: number | null; splyGpv: number | null;
-  gpvOi: number | null; splyGpvOi: number | null;
-  ff: number | null; splyFf: number | null;
-};
-type Ratios = { gp: number | null; splyGp: number | null; goi: number | null; splyGoi: number | null; bs: number | null; splyBs: number | null };
 type DayRow = { date: string; sply: string; f: Figures; x: Ratios };
-type Chg = { text: string | null; t: "up" | "down" | "flat" };
 
 type SortKey = "day" | "sales" | "gpv" | "gp" | "gpvoi" | "goi" | "ff" | "bs";
-type Sort = { key: SortKey; dir: "asc" | "desc" };
-
-const FIELDS = ["sales", "splySales", "gpv", "splyGpv", "gpvOi", "splyGpvOi", "ff", "splyFf"] as const;
+type Sort = SortState<SortKey>;
 
 const at = (a: (number | null)[], i: number) => a[i] ?? null;
 
@@ -39,44 +32,6 @@ function dayFigures(f: DayFields, i: number): Figures {
     ff: at(f.ff, i), splyFf: at(f.splyFf, i),
   };
 }
-
-function sumFigures(rows: Figures[]): Figures {
-  const out = {} as Figures;
-  for (const k of FIELDS) {
-    const vals = rows.map((r) => r[k]).filter((v): v is number => v != null);
-    out[k] = vals.length ? vals.reduce((a, b) => a + b, 0) : null;
-  }
-  return out;
-}
-
-const ratio = (a: number | null, b: number | null) => (a != null && b ? a / b : null);
-const difference = (n: number | null, l: number | null) => (n != null && l != null ? n - l : null);
-
-function ratiosOf(f: Figures): Ratios {
-  return {
-    gp: ratio(f.gpv, f.sales), splyGp: ratio(f.splyGpv, f.splySales),
-    goi: ratio(f.gpvOi, f.sales), splyGoi: ratio(f.splyGpvOi, f.splySales),
-    bs: ratio(f.sales, f.ff), splyBs: ratio(f.splySales, f.splyFf),
-  };
-}
-
-/** Growth is blank when either side is missing or zero, as on the other tabs. */
-const growthChg = (n: number | null, l: number | null): Chg => {
-  const g = growth(n, l);
-  return { text: g == null ? null : signedPct(g, 2), t: toneOfNum(g) };
-};
-/** Ratio change: the difference between the two percentages. */
-const diffChg = (n: number | null, l: number | null): Chg => {
-  const d = difference(n, l);
-  return { text: d == null ? null : signedPct(d, 2), t: toneOfNum(d) };
-};
-
-const cr = (v: number | null) => (v == null ? "–" : crFmt(v));
-
-const parseDay = (iso: string) => new Date(`${iso}T00:00:00`);
-const dayShort = (iso: string) => parseDay(iso).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
-const dayLong = (iso: string) => parseDay(iso).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
-const dayNum = (iso: string) => parseDay(iso).getDate();
 
 const headKey = (h: { division: string; role: string; head: string }) => `${h.division}|${h.role}|${h.head}`;
 const headLabel = (h: { division: string; role: string; head: string }) => `${abbrOf(h.division)} - ${roleName(h.role)} - ${h.head}`;
@@ -113,6 +68,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
     const d = difference(n, l);
     return { delta: signedPct(d, 2), t: toneOfNum(d) };
   };
+  const cr = (v: number | null) => (v == null ? "–" : crFmt(v));
   const kpi = [
     { label: "Sales", value: cr(total.sales), sply: `SPLY: ${cr(total.splySales)}`, ...moneyDelta(total.sales, total.splySales) },
     { label: "GP%", value: pct(totalX.gp, 2), sply: `SPLY: ${pct(totalX.splyGp, 2)}`, ...pointDelta(totalX.gp, totalX.splyGp) },
@@ -241,6 +197,8 @@ export default function Daily({ daily }: { daily: DailyData }) {
           </table>
         </div>
       </div>
+
+      <DailyDetail daily={daily} group={group} />
     </div>
   );
 }
@@ -256,24 +214,6 @@ function sortValue(r: DayRow, key: SortKey): number | string {
     case "ff": return r.f.ff ?? 0;
     case "bs": return r.x.bs ?? 0;
   }
-}
-
-function SortTh({ k, label, sort, onSort, cls }: { k: SortKey; label: string; sort: Sort; onSort: (k: SortKey) => void; cls?: string }) {
-  const active = sort.key === k;
-  return (
-    <th scope="col" className={cls} aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
-      <button className="sortbtn" onClick={() => onSort(k)}>{label}{active ? (sort.dir === "asc" ? " ▲" : " ▼") : ""}</button>
-    </th>
-  );
-}
-
-function Cell({ value, chg }: { value: string; chg: Chg }) {
-  return (
-    <td>
-      <div className="ov-td-val">{value}</div>
-      {chg.text !== null && <div><span className={`delta ${chg.t}`}>{arrowOf(chg.t)}{chg.text}</span></div>}
-    </td>
-  );
 }
 
 /** Paired columns per day: this month (navy) against the same day last year (grey); hover shows the figures. */

@@ -18,6 +18,7 @@ import openpyxl
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_XLSX = ROOT.parent / "1. SALES FILE" / "Day wise Sales GP Trend.xlsx"
 OUT = ROOT / "data" / "daily.json"
+DETAIL_OUT = ROOT / "data" / "daily-detail.json"
 
 # store group -> sheet (same block layout in both)
 GROUPS = {"all": "ALL STORE", "same": "SPLY SAME STORE"}
@@ -108,11 +109,71 @@ def sply_dates(ws, days):
     return out
 
 
+DETAIL_SHEETS = {"all": "ALL STORE DETAIL", "same": "SPLY SAME STORE DETAIL"}
+# detail block title -> field. Footfall and basket are left out: the workbook counts an invoice once per
+# head, so they do not add up across divisions and categories.
+DETAIL_FIELDS = {
+    "Sales THIS MONTH": "sales",
+    "SPLY Sales": "splySales",
+    "GPV THIS MONTH": "gpv",
+    "SPLY GPV": "splyGpv",
+    "VALUE ADJ THIS MONTH": "valueAdj",
+    "VALUE ADJ SPLY": "splyValueAdj",
+}
+DETAIL_TOTAL_ROW = "Grand Total"
+
+
+def read_detail(ws, days):
+    """Rows of a detail sheet. Each value sits on one row only (a division row, a category row with no CRP,
+    or a CRP row), so these rows add up to the sheet's grand total. Returns (leaves, grand_total)."""
+    rows = list(ws.iter_rows(values_only=True))
+    header = next(r for r in rows if r[0] == "Metric")
+    cols = [i for i, v in enumerate(header) if isinstance(v, dt.datetime)]
+    if [header[c].date() for c in cols[: len(days)]] != [d.date() for d in days]:
+        raise SystemExit(f"{ws.title}: day columns do not match the sales sheet")
+    leaves, total = {}, {}
+    for r in rows:
+        field = DETAIL_FIELDS.get(r[0])
+        if field is None or r[1] is None:
+            continue
+        values = [number(r[i]) for i in cols[: len(days)]]
+        if r[1] == DETAIL_TOTAL_ROW:
+            total[field] = values
+            continue
+        key = tuple(None if v is None else str(v).strip() for v in (r[1], r[2], r[3], r[4]))
+        leaf = leaves.setdefault(key, {})
+        if field in leaf:
+            raise SystemExit(f"{ws.title}: {key} appears twice in '{r[0]}'")
+        leaf[field] = values
+    return leaves, total
+
+
+def check_detail(group, leaves, total, daily_total, n):
+    """Rows should add up to the sheet's grand total. The workbook does not fully manage that: a few hundred
+    taka of sales and some value adj (head 'Unmapped') sit in the grand total with no row, and GPV rows drift
+    from the total late in the month. The gaps are reported and shown on the page; only a large sales gap,
+    which would mean the layout has changed, stops the run."""
+    worst = {}
+    for field in DETAIL_FIELDS.values():
+        worst[field] = max(abs(sum((leaf.get(field, [None] * n)[i] or 0) for leaf in leaves.values())
+                               - (total[field][i] or 0)) for i in range(n))
+    print(f"{group} detail: {len(leaves)} rows; largest row-vs-total gaps (taka): "
+          + ", ".join(f"{k} {v:,.0f}" for k, v in worst.items()))
+    for i in range(n):
+        if abs((total["sales"][i] or 0) - (daily_total["sales"][i] or 0)) > 0.001 * (daily_total["sales"][i] or 0):
+            raise SystemExit(f"{group} detail sales grand total differs from the day-wise sales on day {i + 1}")
+    sales_gap = max(abs(sum((leaf.get("sales", [None] * n)[i] or 0) for leaf in leaves.values())
+                        - (total["sales"][i] or 0)) / (total["sales"][i] or 1) for i in range(n))
+    if sales_gap > 0.001:
+        raise SystemExit(f"{group} detail rows miss more than 0.1% of sales: the layout may have changed")
+
+
 def main():
     src = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_XLSX
     wb = openpyxl.load_workbook(src, read_only=True, data_only=True)
     sheets = {group: read_sheet(wb[name]) for group, name in GROUPS.items()}
     dates = sply_dates(wb["ALL STORE DETAIL"], sheets["all"][0])
+    detail_sheets = {group: read_detail(wb[name], sheets["all"][0]) for group, name in DETAIL_SHEETS.items()}
     wb.close()
 
     days = sheets["all"][0]
@@ -150,6 +211,27 @@ def main():
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"As of {out['asOf']} | {out['periodLabel']} | {n} days | saved {OUT}")
+
+    # detail rows: one per division, category or CRP; zero-only rows are left out
+    detail_groups = {}
+    for group, (leaves, total) in detail_sheets.items():
+        check_detail(group, leaves, total, out_groups[group]["total"], n)
+        rows = []
+        for (division, category, head, crp), fields in leaves.items():
+            trimmed = {k: money(fields.get(k, [None] * n)[:n]) for k in DETAIL_FIELDS.values()}
+            if not any(v for values in trimmed.values() for v in values):
+                continue
+            rows.append({"division": division, "category": category, "head": head, "crp": crp, **trimmed})
+        detail_groups[group] = rows
+        print(f"{group}: {len(rows)} detail rows")
+    detail = {
+        "generatedAt": out["generatedAt"],
+        "sourceFile": src.name,
+        "asOf": out["asOf"],
+        "groups": detail_groups,
+    }
+    DETAIL_OUT.write_text(json.dumps(detail, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    print(f"saved {DETAIL_OUT} ({DETAIL_OUT.stat().st_size / 1e6:.2f} MB)")
 
 
 if __name__ == "__main__":

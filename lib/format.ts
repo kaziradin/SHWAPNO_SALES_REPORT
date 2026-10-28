@@ -37,7 +37,7 @@ export function diff(now: number | null | undefined, last: number | null | undef
 }
 
 export function titleCase(s: string): string {
-  return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()).replace("Merchandis", "Merchandise");
+  return s.toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase()).replace(/\bMerchandis\b/, "Merchandise");
 }
 
 export function longDate(iso: string): string {

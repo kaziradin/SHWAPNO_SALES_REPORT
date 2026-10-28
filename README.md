@@ -5,7 +5,7 @@ A Next.js dashboard built from two daily workbooks in `..\1. SALES FILE`:
 
 - **Overview**: sales, target achievement, footfall, basket size and GP, plus division charts and target by leader or zonal manager
 - **Category heads**: growth by category role and responsible head, with the responsible persons behind each head (SPLY)
-- **Day wise sales**: each day of the month against the same day last year, for sales, GPV and GP+OI%, for all stores or same stores, per category head or in total
+- **Day wise sales**: each day of the month against the same day last year, for sales, GPV and GP+OI%, for all stores or same stores, per category head or in total; plus a detail by division, category level 3, head and CRP for the month to date or any single day
 - **Outlets & targets**: about 1,000 outlets with target vs achievement, search and filters
 
 The Overview, Category heads and Outlets tabs can be compared with **SPLY** (same period last year) or **SPLM** (same period last month). The Day wise sales tab compares each day with the same day last year.
@@ -21,6 +21,7 @@ The Overview, Category heads and Outlets tabs can be compared with **SPLY** (sam
 - `data/months/index.json`: the list of months, used by the Overview's month selector.
 - `data/report.json`: a copy of the latest month, used by the other tabs.
 - `data/daily.json`: each day of the month and the same day last year (sales, GPV, value adj, footfall), for all stores and same stores, per category head and in total. Overwritten each run.
+- `data/daily-detail.json`: the detail rows (division, category level 3, head, CRP) with each day's sales, GPV and value adj, for all stores and same stores. Loaded only when the Day wise sales tab is opened. Footfall is left out because it does not add up across categories. The rows do not add up exactly to the workbook total: a little sales and some value adj sit in the workbook total with no row, and the page shows that gap as its own line.
 
 The day-wise workbook saves GPV as formulas without values, so `extract_daily.py` rebuilds GPV as sales × GP%, the workbook's own formula.
 
