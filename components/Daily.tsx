@@ -145,7 +145,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
       ...sorted.map((r) => [dayLong(r.date), dayLong(r.sply), ...cells(r.f, r.x)]),
       [`Total (${rows.length} days)`, "", ...cells(total, totalX)],
     ];
-    downloadExcel(`daily-sales-${group}.xlsx`, "Daily sales", cols, body);
+    downloadExcel(`day-wise-sales-${group}.xlsx`, "Day wise sales", cols, body);
   };
 
   return (
@@ -164,7 +164,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
         </label>
       </div>
 
-      <section className="ov-kpis five" aria-label="Daily sales key figures">
+      <section className="ov-kpis five" aria-label="Day wise sales key figures">
         {kpi.map((k) => (
           <div className="ov-kpi" key={k.label}>
             <div className="ov-kpi-label">{k.label}</div>

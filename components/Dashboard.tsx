@@ -105,7 +105,7 @@ export default function Dashboard({ report, months, daily }: { report: Report; m
         {([
           ["overview", "Overview"],
           ["heads", "Category heads"],
-          ["daily", "Daily sales"],
+          ["daily", "Day wise sales"],
           ["outlets", "Outlets & targets"],
         ] as [Tab, string][]).map(([k, label]) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{label}</button>

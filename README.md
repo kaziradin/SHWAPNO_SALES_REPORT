@@ -5,10 +5,10 @@ A Next.js dashboard built from two daily workbooks in `..\1. SALES FILE`:
 
 - **Overview**: sales, target achievement, footfall, basket size and GP, plus division charts and target by leader or zonal manager
 - **Category heads**: growth by category role and responsible head, with the responsible persons behind each head (SPLY)
-- **Daily sales**: each day of the month against the same day last year, for sales, GPV and GP+OI%, for all stores or same stores, per category head or in total
+- **Day wise sales**: each day of the month against the same day last year, for sales, GPV and GP+OI%, for all stores or same stores, per category head or in total
 - **Outlets & targets**: about 1,000 outlets with target vs achievement, search and filters
 
-The Overview, Category heads and Outlets tabs can be compared with **SPLY** (same period last year) or **SPLM** (same period last month). The Daily sales tab compares each day with the same day last year.
+The Overview, Category heads and Outlets tabs can be compared with **SPLY** (same period last year) or **SPLM** (same period last month). The Day wise sales tab compares each day with the same day last year.
 
 ## Daily update
 
