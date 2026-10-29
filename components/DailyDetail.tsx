@@ -13,13 +13,13 @@ type Group = "all" | "same";
 type SortKey = "name" | "sales" | "gpv" | "gp" | "gpvoi" | "goi";
 type Sort = SortState<SortKey>;
 
-/** A row of the tree: a division, a category, a head or a CRP. Figures are summed over every row below it. */
+/** A row of the tree: a division, a head, a CRP or a category. Figures are summed over every row below it. */
 type Node = { id: string; level: number; name: string; figures: Figures; children: Node[] };
 
 const MTD = "mtd";
 const SEP = "\u001f";
 const GROUP_LABEL: Record<Group, string> = { all: "All stores", same: "Same stores" };
-const LEVEL_NAME: Record<number, string> = { 1: "Division", 2: "Category level 3", 3: "Head", 4: "CRP" };
+const LEVEL_NAME: Record<number, string> = { 1: "Division", 2: "Head", 3: "CRP", 4: "Category level 3" };
 const BLANK: Chg = { text: null, t: "flat" };
 
 /** Figures for the chosen days, summed from the money fields. GPV+OI is GPV plus value adj, as in the workbook. */
@@ -34,11 +34,9 @@ function periodFigures(a: Amounts, idx: number[]): Figures {
   };
 }
 
-/** Where a row sits in the tree. A missing part gets a placeholder so every row has a place. */
+/** Where a row sits in the tree: division, head, CRP, category. A missing part gets a placeholder so every row has a place. */
 function pathOf(r: DetailRow): string[] {
-  if (r.category == null) return [r.division, "(no category)"];
-  if (r.head == null) return [r.division, r.category, "(no head)"];
-  return [r.division, r.category, r.head, r.crp ?? "(no CRP)"];
+  return [r.division, r.head ?? "(no head)", r.crp ?? "(no CRP)", r.category ?? "(no category)"];
 }
 
 function buildTree(rows: DetailRow[], idx: number[]): Node[] {
@@ -98,10 +96,10 @@ function flatten(nodes: Node[], sort: Sort, open: Set<string>, depth: number, al
   });
 }
 
-/** Divisions and categories are shown in title case; heads, CRPs and the placeholders as written. */
+/** Divisions and categories are shown in title case; heads, CRPs (people) and the placeholders as written. */
 function shownName(n: Node): string {
   if (n.name === "0") return "(not set)";
-  if (n.name.startsWith("(") || n.level >= 3) return n.name;
+  if (n.name.startsWith("(") || n.level === 2 || n.level === 3) return n.name;
   return titleCase(n.name);
 }
 
@@ -136,10 +134,10 @@ export default function DailyDetail({ daily, group }: { daily: DailyData; group:
 
   return (
     <section aria-labelledby="detail-heading">
-      <div className="ov-section-head"><h2 id="detail-heading">Detail by division, category and CRP</h2></div>
+      <div className="ov-section-head"><h2 id="detail-heading">Detail by division, head, CRP and category</h2></div>
       <p className="ov-note">
         {label}, {groupLabel}. Uses the store group selected above; the category head filter does not apply here.
-        Click + to open a division, then its categories, heads and CRPs.
+        Click + to open a division, then its heads, the CRPs under each head, and their categories.
       </p>
       {!detail ? (
         <p className="hint">Loading the detail…</p>
@@ -224,7 +222,7 @@ function DetailTable({ daily, detail, group, idx, label, groupLabel, period, set
             </caption>
             <thead>
               <tr>
-                <SortTh k="name" label="Division, category, head, CRP" sort={sort} onSort={onSort} cls="l" />
+                <SortTh k="name" label="Division, head, CRP, category" sort={sort} onSort={onSort} cls="l" />
                 <SortTh k="sales" label="Sales" sort={sort} onSort={onSort} />
                 <SortTh k="gpv" label="GPV" sort={sort} onSort={onSort} />
                 <SortTh k="gp" label="GP%" sort={sort} onSort={onSort} />
