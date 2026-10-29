@@ -46,7 +46,7 @@ const seriesOf = (rows: DayRow[], pick: (r: DayRow) => [number | null, number | 
 export default function Daily({ daily }: { daily: DailyData }) {
   const [group, setGroup] = useState<Group>("all");
   const [head, setHead] = useState<string>(TOTAL);
-  const [sort, setSort] = useState<Sort>({ key: "day", dir: "asc" });
+  const [sort, setSort] = useState<Sort>({ key: "day", dir: "desc" });
   const g = daily.groups[group];
   const picked = g.heads.find((h) => headKey(h) === head);
   const source: DayFields = head === TOTAL || !picked ? g.total : picked;
@@ -60,7 +60,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
   const totalX = ratiosOf(total);
 
   const onSort = (k: SortKey) =>
-    setSort((s) => (s.key === k ? { key: k, dir: s.dir === "asc" ? "desc" : "asc" } : { key: k, dir: k === "day" ? "asc" : "desc" }));
+    setSort((s) => (s.key === k ? { key: k, dir: s.dir === "asc" ? "desc" : "asc" } : { key: k, dir: "desc" }));
   const sorted = [...rows].sort((a, b) => {
     const x = sortValue(a, sort.key), y = sortValue(b, sort.key);
     const m = sort.dir === "asc" ? 1 : -1;
