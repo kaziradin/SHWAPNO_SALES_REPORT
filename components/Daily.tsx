@@ -22,6 +22,8 @@ type Metric = {
   label: string;
   kind: "amount" | "ratio";
   format: "money" | "int" | "pct";
+  /** Needs footfall, which cannot be worked out for a single CRP, so these rows are hidden when a CRP is chosen. */
+  footfall?: boolean;
   now: (f: Figures, x: Ratios) => number | null;
   prev: (f: Figures, x: Ratios) => number | null;
 };
@@ -31,8 +33,8 @@ const METRICS: Metric[] = [
   { label: "GP%", kind: "ratio", format: "pct", now: (_, x) => x.gp, prev: (_, x) => x.splyGp },
   { label: "GPV+OI", kind: "amount", format: "money", now: (f) => f.gpvOi, prev: (f) => f.splyGpvOi },
   { label: "GP+OI%", kind: "ratio", format: "pct", now: (_, x) => x.goi, prev: (_, x) => x.splyGoi },
-  { label: "Footfall", kind: "amount", format: "int", now: (f) => f.ff, prev: (f) => f.splyFf },
-  { label: "Basket", kind: "amount", format: "money", now: (_, x) => x.bs, prev: (_, x) => x.splyBs },
+  { label: "Footfall", kind: "amount", format: "int", footfall: true, now: (f) => f.ff, prev: (f) => f.splyFf },
+  { label: "Basket", kind: "amount", format: "money", footfall: true, now: (_, x) => x.bs, prev: (_, x) => x.splyBs },
 ];
 
 const at = (a: (number | null)[], i: number) => a[i] ?? null;
@@ -88,6 +90,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
     : headSel ?? g.total;
   const headText = headSel ? headLabel(headSel) : "All category heads";
   const selectionLabel = crpSel ? `${headText}, CRP ${crpSel}` : headText;
+  const metrics = crpSel ? METRICS.filter((m) => !m.footfall) : METRICS;
 
   const onHead = (v: string) => {
     setHead(v);
@@ -147,7 +150,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
       ["Compared with", "Same day last year", ...rows.map((r) => dayLong(r.sply)), ...(withTotal ? [""] : [])],
     ];
     const formats: ExportCol["format"][] = ["text", "text"];
-    for (const m of METRICS) {
+    for (const m of metrics) {
       body.push([m.label, "This month", ...all.map(({ f, x }) => m.now(f, x))]);
       body.push([m.label, "Same day last year", ...all.map(({ f, x }) => m.prev(f, x))]);
       body.push([
@@ -199,7 +202,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
       </section>
       <p className="ov-note">
         {selectionLabel}, {GROUP_LABEL[group].toLowerCase()}, {periodText}. Each day is compared with the same day last year.
-        {crpSel && " Footfall and basket show – for a single CRP: a bill with items from several categories would be counted more than once."}
+        {crpSel && " Footfall and basket are hidden for a single CRP: a bill with items from several categories would be counted more than once."}
       </p>
 
       <div className="day-charts">
@@ -241,7 +244,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
               </tr>
             </thead>
             <tbody>
-              {METRICS.map((m) => (
+              {metrics.map((m) => (
                 <tr key={m.label}>
                   <th scope="row">{m.label}</th>
                   {rows.map((r) => (
