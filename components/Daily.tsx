@@ -14,6 +14,8 @@ import DayLines, { type DayPoint } from "./DayLines";
 type Group = "all" | "same";
 const GROUP_LABEL: Record<Group, string> = { all: "All stores", same: "Same stores" };
 const TOTAL = "total";
+/** The Period choice that takes the dates typed in From and To. */
+const RANGE = "range";
 
 type DayRow = { date: string; sply: string; f: Figures; x: Ratios };
 
@@ -64,7 +66,10 @@ const seriesOf = (rows: DayRow[], pick: (r: DayRow) => [number | null, number | 
   });
 
 export default function Daily({ daily }: { daily: DailyData }) {
+  const firstDate = daily.days[0].date, lastDate = daily.days[daily.days.length - 1].date;
   const [period, setPeriod] = useState<string>(MTD);
+  const [from, setFrom] = useState<string>(firstDate);
+  const [to, setTo] = useState<string>(lastDate);
   const [group, setGroup] = useState<Group>("all");
   const [head, setHead] = useState<string>(TOTAL);
   const [crp, setCrp] = useState("");
@@ -121,16 +126,30 @@ export default function Daily({ daily }: { daily: DailyData }) {
     const f = dayFigures(source, i);
     return { date: d.date, sply: d.sply, f, x: ratiosOf(f) };
   });
-  // the charts and the table show every day; the Period choice sets the totals and marks the day in the charts and table
-  const monthTotal = sumFigures(rows.map((r) => r.f));
-  const monthX = ratiosOf(monthTotal);
-  const selected = period === MTD ? undefined : period;
-  const selectedRow = rows.find((r) => r.date === selected);
-  const total = selectedRow ? selectedRow.f : monthTotal;
-  const totalX = selectedRow ? selectedRow.x : monthX;
-  const periodText = selectedRow ? `${dayLong(selectedRow.date)} against ${dayLong(selectedRow.sply)}` : `month to date, ${rows.length} days`;
-  const withTotal = !selected;
-  const colClass = (date: string) => [isFriSat(date) ? "wk" : "", date === selected ? "sel" : ""].filter(Boolean).join(" ") || undefined;
+  // the days the Period choice covers: the whole month so far, one day, or the dates from From to To in either order
+  const lo = from <= to ? from : to, hi = from <= to ? to : from;
+  const chosenIdx = rows.map((_, i) => i).filter((i) => {
+    const date = rows[i].date;
+    if (period === MTD) return true;
+    if (period === RANGE) return date >= lo && date <= hi;
+    return date === period;
+  });
+  const chosen = chosenIdx.map((i) => rows[i]);
+  // the totals, the KPI band and the table follow the chosen days; the charts keep the whole month and mark them
+  const total = sumFigures(chosen.map((r) => r.f));
+  const totalX = ratiosOf(total);
+  const withTotal = chosen.length > 1;
+  const band = period === MTD ? undefined : period === RANGE ? { from: lo, to: hi } : { from: period, to: period };
+  const totalLabel = period === MTD ? "Month to date" : period === RANGE ? "Selected period" : "Selected day";
+  const periodName = period === MTD ? `Month to date (${daily.periodLabel})`
+    : period === RANGE ? `${dayLong(lo)} to ${dayLong(hi)}`
+    : dayLong(period);
+  // last year's days matched with the chosen days, as the workbook matches them
+  const splys = chosen.map((r) => r.sply).sort();
+  const compareName = chosen.length === 1 ? dayLong(splys[0])
+    : chosen.length === 0 ? "no matched days"
+    : `the matched days of ${dayMonth(splys[0])} to ${dayMonth(splys[splys.length - 1])} ${splys[0].slice(0, 4)}`;
+  const colClass = (date: string) => (isFriSat(date) ? "wk" : undefined);
 
   const moneyDelta = (n: number | null, l: number | null) => {
     const gr = growth(n, l), d = difference(n, l);
@@ -152,17 +171,17 @@ export default function Daily({ daily }: { daily: DailyData }) {
   const shown = (m: Metric, v: number | null) => (m.kind === "ratio" ? pct(v, 2) : m.crore ? crOrDash(v) : full(v));
   const changeOf = (m: Metric, n: number | null, p: number | null) => (m.kind === "ratio" ? diffChg(n, p) : growthChg(n, p));
 
-  // the same layout as the table: a column per day, a Total column for the month, three rows per measure
+  // the same layout as the table: a column per chosen day, a Total column when there is more than one day
   const exportDays = () => {
     const cols: ExportCol[] = [
       { header: "Measure", format: "text" }, { header: "Row", format: "text" },
-      ...rows.map((r) => ({ header: dayMonth(r.date), format: "money" as const })),
-      ...(withTotal ? [{ header: `Total (${rows.length} days)`, format: "money" as const }] : []),
+      ...chosen.map((r) => ({ header: dayMonth(r.date), format: "money" as const })),
+      ...(withTotal ? [{ header: `Total (${chosen.length} days)`, format: "money" as const }] : []),
     ];
-    const all = [...rows.map((r) => ({ f: r.f, x: r.x })), ...(withTotal ? [{ f: monthTotal, x: monthX }] : [])];
+    const all = [...chosen.map((r) => ({ f: r.f, x: r.x })), ...(withTotal ? [{ f: total, x: totalX }] : [])];
     const body: ExportCell[][] = [
-      ["Day", "", ...rows.map((r) => dayWeekday(r.date)), ...(withTotal ? [""] : [])],
-      ["Compared with", "Same day last year", ...rows.map((r) => dayLong(r.sply)), ...(withTotal ? [""] : [])],
+      ["Day", "", ...chosen.map((r) => dayWeekday(r.date)), ...(withTotal ? [""] : [])],
+      ["Compared with", "Same day last year", ...chosen.map((r) => dayLong(r.sply)), ...(withTotal ? [""] : [])],
     ];
     const formats: ExportCol["format"][] = ["text", "text"];
     for (const m of metrics) {
@@ -183,9 +202,22 @@ export default function Daily({ daily }: { daily: DailyData }) {
         <label>Period
           <select value={period} onChange={(e) => setPeriod(e.target.value)} aria-label="Period">
             <option value={MTD}>Month to date ({daily.periodLabel})</option>
+            <option value={RANGE}>Date range (From and To)</option>
             {[...daily.days].reverse().map((d) => <option key={d.date} value={d.date}>{dayLong(d.date)}</option>)}
           </select>
         </label>
+        {period === RANGE && (
+          <>
+            <label>From
+              <input type="date" value={from} min={firstDate} max={lastDate} aria-label="From date"
+                onChange={(e) => e.target.value && setFrom(e.target.value)} />
+            </label>
+            <label>To
+              <input type="date" value={to} min={firstDate} max={lastDate} aria-label="To date"
+                onChange={(e) => e.target.value && setTo(e.target.value)} />
+            </label>
+          </>
+        )}
         <label>Store group
           <select value={group} onChange={(e) => onGroup(e.target.value as Group)} aria-label="Store group">
             {(Object.keys(GROUP_LABEL) as Group[]).map((k) => <option key={k} value={k}>{GROUP_LABEL[k]}</option>)}
@@ -222,24 +254,26 @@ export default function Daily({ daily }: { daily: DailyData }) {
         ))}
       </section>
       <p className="ov-note">
-        {selectionLabel}, {GROUP_LABEL[group].toLowerCase()}, {periodText}. Each day is compared with the same day last year.
+        {selectionLabel}, {GROUP_LABEL[group].toLowerCase()}, {periodName}.{" "}
+        {chosen.length ? "Each day is compared with the same day last year." : "No days fall in this range; choose dates inside the data period."}
+        {period === RANGE && from > to && " The two dates were swapped, so the range runs from the earlier to the later date."}
         {fromRows && " Footfall and basket are hidden when a CRP or category is chosen: a bill with items from several categories would be counted more than once."}
       </p>
 
       <div className="day-charts">
         <DayLines title="Day wise sales" kind="money" points={seriesOf(rows, (r) => [r.f.sales, r.f.splySales])}
-          total={{ now: monthTotal.sales, prev: monthTotal.splySales }} selected={selected} />
+          total={{ now: total.sales, prev: total.splySales }} band={band} totalLabel={totalLabel} />
         <div className="day-pair">
           <DayLines title="Day wise GPV" kind="money" points={seriesOf(rows, (r) => [r.f.gpv, r.f.splyGpv])}
-            total={{ now: monthTotal.gpv, prev: monthTotal.splyGpv }} selected={selected} />
+            total={{ now: total.gpv, prev: total.splyGpv }} band={band} totalLabel={totalLabel} />
           <DayLines title="Day wise GPV+OI" kind="money" points={seriesOf(rows, (r) => [r.f.gpvOi, r.f.splyGpvOi])}
-            total={{ now: monthTotal.gpvOi, prev: monthTotal.splyGpvOi }} selected={selected} />
+            total={{ now: total.gpvOi, prev: total.splyGpvOi }} band={band} totalLabel={totalLabel} />
         </div>
         <div className="day-pair">
           <DayLines title="Day wise GP%" kind="pct" points={seriesOf(rows, (r) => [r.x.gp, r.x.splyGp])}
-            total={{ now: monthX.gp, prev: monthX.splyGp }} selected={selected} />
+            total={{ now: totalX.gp, prev: totalX.splyGp }} band={band} totalLabel={totalLabel} />
           <DayLines title="Day wise GP+OI%" kind="pct" points={seriesOf(rows, (r) => [r.x.goi, r.x.splyGoi])}
-            total={{ now: monthX.goi, prev: monthX.splyGoi }} selected={selected} />
+            total={{ now: totalX.goi, prev: totalX.splyGoi }} band={band} totalLabel={totalLabel} />
         </div>
       </div>
 
@@ -249,31 +283,31 @@ export default function Daily({ daily }: { daily: DailyData }) {
         <div className="ov-table-scroll">
           <table className="ov-table day-wide">
             <caption>
-              {selectionLabel}, {GROUP_LABEL[group].toLowerCase()}. Each day against the same day last year; hover a date to see which day.
-              Friday and Saturday are shaded{selected ? "; the day picked in Period is outlined" : ""}.
+              {selectionLabel}, {GROUP_LABEL[group].toLowerCase()}, {periodName}. Each day against the same day last year; hover a date to see which day.
+              Friday and Saturday are shaded.
             </caption>
             <thead>
               <tr>
                 <th scope="col">Measure</th>
-                {rows.map((r) => (
+                {chosen.map((r) => (
                   <th key={r.date} scope="col" className={colClass(r.date)} title={`Compared with ${dayLong(r.sply)}`}>
                     {dayMonth(r.date)}
                     <div className="sub">{dayWeekday(r.date)}</div>
                   </th>
                 ))}
-                {withTotal && <th scope="col">Total ({rows.length} days)</th>}
+                {withTotal && <th scope="col">Total ({chosen.length} days)</th>}
               </tr>
             </thead>
             <tbody>
               {metrics.map((m) => (
                 <tr key={m.label}>
                   <th scope="row">{m.label}</th>
-                  {rows.map((r) => (
+                  {chosen.map((r) => (
                     <Cell key={r.date} cls={colClass(r.date)} value={shown(m, m.now(r.f, r.x))}
                       chg={changeOf(m, m.now(r.f, r.x), m.prev(r.f, r.x))} />
                   ))}
                   {withTotal && (
-                    <Cell value={shown(m, m.now(monthTotal, monthX))} chg={changeOf(m, m.now(monthTotal, monthX), m.prev(monthTotal, monthX))} />
+                    <Cell value={shown(m, m.now(total, totalX))} chg={changeOf(m, m.now(total, totalX), m.prev(total, totalX))} />
                   )}
                 </tr>
               ))}
@@ -282,7 +316,8 @@ export default function Daily({ daily }: { daily: DailyData }) {
         </div>
       </div>
 
-      <DailyDetail daily={daily} group={group} detail={detail} period={period} head={headSel} crp={crpSel} cat={catSel} />
+      <DailyDetail daily={daily} group={group} detail={detail} chosen={chosenIdx} label={periodName} compare={compareName}
+        head={headSel} crp={crpSel} cat={catSel} />
     </div>
   );
 }

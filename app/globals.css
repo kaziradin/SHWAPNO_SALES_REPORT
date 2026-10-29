@@ -424,6 +424,7 @@ td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 /* Day wise sales main filters: Period, Store group, Category head and CRP share one row on a desktop screen */
 .day-filters { column-gap: 14px; }
 .day-filters select { min-width: 150px; max-width: 230px; }
+.day-filters input[type="date"] { min-width: 150px; padding: 6px 8px; border: 1px solid #D8E0EA; border-radius: 8px; font: inherit; color: inherit; background: #fff; }
 .day-filters label:nth-child(3) select { max-width: 320px; }
 
 /* Day wise sales: sales full width, then the ratios in pairs (GPV beside GPV+OI, GP% beside GP+OI%) */

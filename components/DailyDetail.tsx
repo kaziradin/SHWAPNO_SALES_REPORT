@@ -105,19 +105,15 @@ function shownName(n: Node): string {
 }
 
 /** The detail table. The period, store group, category head, CRP and category come from the filters at the top of the tab. */
-export default function DailyDetail({ daily, group, detail, period, head, crp, cat }: {
-  daily: DailyData; group: Group; detail: DailyDetailData | null; period: string; head: DailyHead | null; crp: string; cat: string;
+export default function DailyDetail({ daily, group, detail, chosen, label, compare, head, crp, cat }: {
+  daily: DailyData; group: Group; detail: DailyDetailData | null; chosen: number[]; label: string; compare: string;
+  head: DailyHead | null; crp: string; cat: string;
 }) {
   const [sort, setSort] = useState<Sort>({ key: "sales", dir: "desc" });
   const [open, setOpen] = useState<Set<string>>(new Set());
 
-  const idx = period === MTD ? daily.days.map((_, i) => i) : [daily.days.findIndex((d) => d.date === period)];
-  const label = period === MTD ? `Month to date (${daily.periodLabel})` : dayLong(period);
-  // the last-year days the chosen period is compared with, as the workbook matches them
-  const lastYear = daily.days.map((d) => d.sply).sort();
-  const compare = period === MTD
-    ? `the matched days of ${dayMonth(lastYear[0])} to ${dayMonth(lastYear[lastYear.length - 1])} ${lastYear[0].slice(0, 4)}`
-    : dayLong(daily.days.find((d) => d.date === period)?.sply ?? period);
+  // the days chosen in the Period list (a month, one day or a date range), with their label and last-year comparison
+  const idx = chosen;
   const groupLabel = GROUP_LABEL[group].toLowerCase();
 
   const onSort = (k: SortKey) =>
