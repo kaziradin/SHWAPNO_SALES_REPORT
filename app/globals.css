@@ -420,6 +420,11 @@ td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .drill-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px 20px; margin: 4px 0 14px; }
 .drill-filters label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: #526176; }
 .drill-filters select { min-width: 240px; }
+
+/* Day wise sales: sales full width, then the ratios in pairs (GPV beside GPV+OI, GP% beside GP+OI%) */
+.day-charts { display: grid; gap: 16px; margin-bottom: 20px; }
+.day-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 900px) { .day-pair { grid-template-columns: minmax(0, 1fr); } }
 .drill-group td { background: #eef3fa; }
 .sub { font-size: 11px; font-weight: 400; color: #526176; margin-top: 2px; }
 

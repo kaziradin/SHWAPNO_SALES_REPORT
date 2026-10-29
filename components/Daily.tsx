@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { DailyData, DayFields } from "@/lib/types";
 import { abbrOf, arrowOf, crFmt, crSigned, full, growth, pct, roleName, signedPct, toneOfNum } from "@/lib/format";
-import { useTooltip, type TipRow } from "./charts";
+import { useTooltip, useWidth, type TipRow } from "./charts";
 import { downloadExcel, ExportButton, type ExportCell, type ExportCol } from "@/lib/export";
 import {
   Cell, dayLong, dayNum, dayShort, difference, diffChg, Figures, growthChg, Ratios, ratiosOf, SortState, SortTh, sumFigures,
@@ -134,14 +134,22 @@ export default function Daily({ daily }: { daily: DailyData }) {
         {selectionLabel}, {GROUP_LABEL[group].toLowerCase()}, {rows.length} days so far. Each day is compared with the same day last year.
       </p>
 
-      <div className="ov-section-head"><h2>Sales and GPV by day</h2></div>
-      <DayColumns rows={rows} title="Sales by day" sub="crore; navy this month, grey same day last year" fmt={crFmt}
-        pick={(r) => [r.f.sales, r.f.splySales]} />
-      <DayColumns rows={rows} title="GPV by day" sub="crore; navy this month, grey same day last year" fmt={crFmt}
-        pick={(r) => [r.f.gpv, r.f.splyGpv]} />
-
-      <div className="ov-section-head"><h2>GP+OI% by day</h2></div>
-      <GpOiLines rows={rows} />
+      <div className="day-charts">
+        <DayLines rows={rows} kind="money" title="Day wise sales" sub="crore; navy this month, grey same day last year"
+          pick={(r) => [r.f.sales, r.f.splySales]} />
+        <div className="day-pair">
+          <DayLines rows={rows} kind="money" title="Day wise GPV" sub="crore; navy this month, grey same day last year"
+            pick={(r) => [r.f.gpv, r.f.splyGpv]} />
+          <DayLines rows={rows} kind="money" title="Day wise GPV+OI" sub="crore; navy this month, grey same day last year"
+            pick={(r) => [r.f.gpvOi, r.f.splyGpvOi]} />
+        </div>
+        <div className="day-pair">
+          <DayLines rows={rows} kind="pct" title="Day wise GP%" sub="navy this month, grey same day last year"
+            pick={(r) => [r.x.gp, r.x.splyGp]} />
+          <DayLines rows={rows} kind="pct" title="Day wise GP+OI%" sub="navy this month, grey same day last year"
+            pick={(r) => [r.x.goi, r.x.splyGoi]} />
+        </div>
+      </div>
 
       <div className="ov-section-head"><h2>Day by day</h2></div>
       <div className="xbar"><ExportButton onClick={exportDays} /></div>
@@ -216,88 +224,72 @@ function sortValue(r: DayRow, key: SortKey): number | string {
   }
 }
 
-/** Paired columns per day: this month (navy) against the same day last year (grey); hover shows the figures. */
-function DayColumns({ rows, title, sub, fmt, pick }: {
-  rows: DayRow[]; title: string; sub: string; fmt: (v: number) => string; pick: (r: DayRow) => [number | null, number | null];
+/** One line per series, one point per day: this month (navy) against the same day last year (grey).
+ *  Money is labelled in crore, ratios in percent to two decimals. Hover shows the day's figures. */
+function DayLines({ rows, title, sub, kind, pick }: {
+  rows: DayRow[]; title: string; sub: string; kind: "money" | "pct"; pick: (r: DayRow) => [number | null, number | null];
 }) {
   const { show, hide, node } = useTooltip();
-  const W = 1000, top = 12, plotH = 220, base = top + plotH, H = base + 24;
-  const vals = rows.map(pick);
-  const vmax = Math.max(1, ...vals.flatMap(([n, l]) => [n ?? 0, l ?? 0]));
-  const gw = W / Math.max(1, rows.length);
-  const bw = Math.min(18, (gw - 6) / 2);
+  const { ref, w } = useWidth(560);
+  const H = 240, top = 14, bottom = 26, left = 66, right = 14;
+  const fmt = (v: number) => (kind === "money" ? crFmt(v) : pct(v, 2));
+  const pts = rows.map(pick);
+  const values = pts.flatMap(([a, b]) => [a, b]).filter((v): v is number => v != null);
+  const lo0 = values.length ? Math.min(...values) : 0;
+  const hi0 = values.length ? Math.max(...values) : 1;
+  const padding = (hi0 - lo0) * 0.08 || Math.abs(hi0) * 0.01 || 1;
+  const lo = lo0 - padding, hi = hi0 + padding;
+  const plotW = Math.max(40, w - left - right), plotH = H - top - bottom;
+  const n = Math.max(1, rows.length);
+  const x = (i: number) => left + (plotW * (i + 0.5)) / n;
+  const y = (v: number) => top + ((hi - v) / (hi - lo)) * plotH;
+  const line = (side: 0 | 1) =>
+    pts.map(([a, b], i) => { const v = side === 0 ? a : b; return v == null ? null : `${x(i)},${y(v)}`; }).filter(Boolean).join(" ");
+  // label every day when there is room, otherwise every second, third... day; the last day is always labelled
+  const step = Math.max(1, Math.ceil(n / Math.max(1, Math.floor(plotW / 24))));
+  const lastIdx = rows.length - 1;
+  const lastNow = lastIdx >= 0 ? pts[lastIdx][0] : null;
+  const ticks = [hi0, (hi0 + lo0) / 2, lo0];
   return (
     <div className="ov-panel">
       <h3>{title}<small>{sub}</small></h3>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={`${title}: this month against the same day last year`}>
-        {[0.25, 0.5, 0.75, 1].map((t) => (
-          <line key={t} x1={0} x2={W} y1={base - plotH * t} y2={base - plotH * t} className="ov-grid" />
-        ))}
-        <line x1={0} x2={W} y1={base} y2={base} className="ov-base" />
-        {rows.map((r, i) => {
-          const [now, last] = vals[i];
-          const cx = gw * i + gw / 2;
-          const hn = (plotH * (now ?? 0)) / vmax;
-          const hl = (plotH * (last ?? 0)) / vmax;
-          const d = difference(now, last);
-          const tip: TipRow[] = [
-            ["This day", now == null ? "–" : fmt(now)],
-            ["Same day last year", last == null ? "–" : fmt(last)],
-            ["Difference", d == null ? "–" : `${d >= 0 ? "+" : "−"}${fmt(Math.abs(d))}`],
-            ["Change", signedPct(growth(now, last), 2)],
-          ];
-          return (
-            <g key={r.date} onMouseMove={(e) => show(e, `${dayLong(r.date)} · vs ${dayShort(r.sply)}`, tip)} onMouseLeave={hide}>
-              <rect className="ov-col-hit" x={gw * i} y={0} width={gw} height={H} />
-              <rect x={cx - bw - 1} y={base - hn} width={bw} height={Math.max(hn, 0)} rx={3} style={{ fill: "var(--this)" }} />
-              <rect x={cx + 1} y={base - hl} width={bw} height={Math.max(hl, 0)} rx={3} style={{ fill: "var(--last)" }} />
-              <text x={cx} y={base + 16} textAnchor="middle" fontSize={11} className="ov-col-name">{dayNum(r.date)}</text>
+      <div ref={ref}>
+        <svg width={w} height={H} viewBox={`0 0 ${w} ${H}`} role="img" aria-label={`${title}: this month against the same day last year`}>
+          {ticks.map((t, k) => (
+            <g key={k}>
+              <line x1={left} x2={w - right} y1={y(t)} y2={y(t)} className="ov-grid" />
+              <text x={left - 8} y={y(t)} textAnchor="end" dominantBaseline="middle" fontSize={11} className="ov-col-name">{fmt(t)}</text>
             </g>
-          );
-        })}
-      </svg>
-      {node}
-    </div>
-  );
-}
-
-/** GP+OI% per day as two lines: this month (navy) against the same day last year (grey). */
-function GpOiLines({ rows }: { rows: DayRow[] }) {
-  const { show, hide, node } = useTooltip();
-  const W = 1000, H = 240, pad = 24;
-  const vals = rows.flatMap((r) => [r.x.goi, r.x.splyGoi]).filter((v): v is number => v != null);
-  const lo = Math.min(...vals), hi = Math.max(...vals);
-  const span = hi - lo || 0.0001;
-  const gw = W / Math.max(1, rows.length);
-  const x = (i: number) => gw * i + gw / 2;
-  const y = (v: number) => pad + ((hi - v) / span) * (H - 2 * pad);
-  const line = (pick: (r: DayRow) => number | null) =>
-    rows.map((r, i) => { const v = pick(r); return v == null ? null : `${x(i)},${y(v)}`; }).filter(Boolean).join(" ");
-  return (
-    <div className="ov-panel">
-      <h3>GP+OI%<small>navy this month, grey same day last year</small></h3>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="GP+OI% by day, this month against the same day last year">
-        <line x1={0} x2={W} y1={y(hi)} y2={y(hi)} className="ov-grid" />
-        <line x1={0} x2={W} y1={y(lo)} y2={y(lo)} className="ov-grid" />
-        <text x={4} y={y(hi) - 6} fontSize={11} className="ov-col-name">{pct(hi, 2)}</text>
-        <text x={4} y={y(lo) + 14} fontSize={11} className="ov-col-name">{pct(lo, 2)}</text>
-        <polyline points={line((r) => r.x.splyGoi)} fill="none" style={{ stroke: "var(--last)" }} strokeWidth={2.5} strokeLinejoin="round" />
-        <polyline points={line((r) => r.x.goi)} fill="none" style={{ stroke: "var(--this)" }} strokeWidth={2.5} strokeLinejoin="round" />
-        {rows.map((r, i) => {
-          const tip: TipRow[] = [
-            ["This day", pct(r.x.goi, 2)],
-            ["Same day last year", pct(r.x.splyGoi, 2)],
-            ["Difference", signedPct(difference(r.x.goi, r.x.splyGoi), 2)],
-          ];
-          return (
-            <g key={r.date} onMouseMove={(e) => show(e, `${dayLong(r.date)} · vs ${dayShort(r.sply)}`, tip)} onMouseLeave={hide}>
-              <rect className="ov-col-hit" x={gw * i} y={0} width={gw} height={H} />
-              {r.x.splyGoi != null && <circle cx={x(i)} cy={y(r.x.splyGoi)} r={3} style={{ fill: "var(--last)" }} />}
-              {r.x.goi != null && <circle cx={x(i)} cy={y(r.x.goi)} r={3.5} style={{ fill: "var(--this)" }} />}
-            </g>
-          );
-        })}
-      </svg>
+          ))}
+          <polyline points={line(1)} fill="none" style={{ stroke: "var(--last)" }} strokeWidth={2} strokeLinejoin="round" />
+          <polyline points={line(0)} fill="none" style={{ stroke: "var(--this)" }} strokeWidth={2.5} strokeLinejoin="round" />
+          {rows.map((r, i) => {
+            const [now, prev] = pts[i];
+            const d = difference(now, prev);
+            const tip: TipRow[] = [
+              ["This day", now == null ? "–" : fmt(now)],
+              ["Same day last year", prev == null ? "–" : fmt(prev)],
+              ["Difference", d == null ? "–" : kind === "money" ? crSigned(d) : signedPct(d, 2)],
+            ];
+            if (kind === "money") tip.push(["Change", signedPct(growth(now, prev), 2)]);
+            return (
+              <g key={r.date} onMouseMove={(e) => show(e, `${dayLong(r.date)} · vs ${dayShort(r.sply)}`, tip)} onMouseLeave={hide}>
+                <rect className="ov-col-hit" x={x(i) - plotW / n / 2} y={0} width={plotW / n} height={H} />
+                {prev != null && <circle cx={x(i)} cy={y(prev)} r={3} style={{ fill: "var(--last)" }} />}
+                {now != null && <circle cx={x(i)} cy={y(now)} r={3.5} style={{ fill: "var(--this)" }} />}
+                {(i % step === 0 || i === lastIdx) && (
+                  <text x={x(i)} y={H - 8} textAnchor="middle" fontSize={11} className="ov-col-name">{dayNum(r.date)}</text>
+                )}
+              </g>
+            );
+          })}
+          {lastNow != null && (
+            <text x={x(lastIdx)} y={y(lastNow) - 9} textAnchor="end" fontSize={12} style={{ fill: "var(--this)", fontWeight: 600 }}>
+              {fmt(lastNow)}
+            </text>
+          )}
+        </svg>
+      </div>
       {node}
     </div>
   );

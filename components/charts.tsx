@@ -1,19 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 /** Render charts at their real pixel width so text stays 11px instead of scaling with the viewBox. */
 export function useWidth(fallback = 640) {
-  const ref = useRef<HTMLDivElement>(null);
+  // a callback ref: the observer starts when the element appears, not when the component first mounts
+  const [el, setEl] = useState<HTMLDivElement | null>(null);
   const [w, setW] = useState(fallback);
   useEffect(() => {
-    const el = ref.current;
     if (!el) return;
     const ro = new ResizeObserver(([e]) => setW(Math.max(280, Math.floor(e.contentRect.width))));
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
-  return { ref, w };
+  }, [el]);
+  return { ref: setEl, w };
 }
 
 export type TipRow = [string, string];
