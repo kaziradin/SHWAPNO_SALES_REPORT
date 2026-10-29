@@ -5,7 +5,7 @@ import type { DailyData, DailyDetailData, DayFields, DetailRow } from "@/lib/typ
 import { full, growth, pct, signedFull, titleCase } from "@/lib/format";
 import { downloadExcel, ExportButton, type ExportCell, type ExportCol } from "@/lib/export";
 import {
-  Cell, Chg, dayLong, difference, diffChg, Figures, growthChg, ratiosOf, SortState, SortTh, sumFigures,
+  Cell, Chg, dayLong, dayMonth, difference, diffChg, Figures, growthChg, ratiosOf, SortState, SortTh, sumFigures,
 } from "@/lib/daily";
 
 type Amounts = Pick<DayFields, "sales" | "splySales" | "gpv" | "splyGpv" | "valueAdj" | "splyValueAdj">;
@@ -122,6 +122,11 @@ export default function DailyDetail({ daily, group }: { daily: DailyData; group:
 
   const idx = period === MTD ? daily.days.map((_, i) => i) : [daily.days.findIndex((d) => d.date === period)];
   const label = period === MTD ? `Month to date (${daily.periodLabel})` : dayLong(period);
+  // the last-year days the chosen period is compared with, as the workbook matches them
+  const lastYear = daily.days.map((d) => d.sply).sort();
+  const compare = period === MTD
+    ? `the matched days of ${dayMonth(lastYear[0])} to ${dayMonth(lastYear[lastYear.length - 1])} ${lastYear[0].slice(0, 4)}`
+    : dayLong(daily.days.find((d) => d.date === period)?.sply ?? period);
   const groupLabel = GROUP_LABEL[group].toLowerCase();
 
   const onSort = (k: SortKey) =>
@@ -146,7 +151,7 @@ export default function DailyDetail({ daily, group }: { daily: DailyData; group:
         <p className="hint">Loading the detail…</p>
       ) : (
         <DetailTable
-          daily={daily} detail={detail} group={group} idx={idx} label={label} groupLabel={groupLabel}
+          daily={daily} detail={detail} group={group} idx={idx} label={label} compare={compare} groupLabel={groupLabel}
           period={period} setPeriod={setPeriod} sort={sort} onSort={onSort} open={open} toggle={toggle} setOpen={setOpen}
           crp={crp} cat={cat} setCrp={setCrp} setCat={setCat}
         />
@@ -155,8 +160,8 @@ export default function DailyDetail({ daily, group }: { daily: DailyData; group:
   );
 }
 
-function DetailTable({ daily, detail, group, idx, label, groupLabel, period, setPeriod, sort, onSort, open, toggle, setOpen, crp, cat, setCrp, setCat }: {
-  daily: DailyData; detail: DailyDetailData; group: Group; idx: number[]; label: string; groupLabel: string;
+function DetailTable({ daily, detail, group, idx, label, compare, groupLabel, period, setPeriod, sort, onSort, open, toggle, setOpen, crp, cat, setCrp, setCat }: {
+  daily: DailyData; detail: DailyDetailData; group: Group; idx: number[]; label: string; compare: string; groupLabel: string;
   period: string; setPeriod: (p: string) => void; sort: Sort; onSort: (k: SortKey) => void;
   open: Set<string>; toggle: (id: string) => void; setOpen: (s: Set<string>) => void;
   crp: string; cat: string; setCrp: (c: string) => void; setCat: (c: string) => void;
@@ -269,7 +274,7 @@ function DetailTable({ daily, detail, group, idx, label, groupLabel, period, set
         <div className="ov-table-scroll">
           <table className="ov-table">
             <caption>
-              {label}, {groupLabel}{filtered ? ", filtered" : ""}. Click a heading to sort within each level.
+              {label}, {groupLabel}{filtered ? ", filtered" : ""}. Compared with {compare}. Click a heading to sort within each level.
             </caption>
             <thead>
               <tr>
