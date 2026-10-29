@@ -4,7 +4,7 @@ A Next.js dashboard built from two daily workbooks in `..\1. SALES FILE`:
 **Business Performance Report.xlsx** and **Day wise Sales GP Trend.xlsx**.
 
 - **Overview**: sales, target achievement, footfall, basket size and GP, plus division charts and target by leader or zonal manager
-- **Category heads**: growth by category role and responsible head, with the responsible persons behind each head (SPLY)
+- **Category heads**: growth by category role and responsible head, with the responsible persons behind each head (SPLY). For all stores and same stores, this month and SPLY come from the day-wise file, and the KPIs and the Total row are the day-wise total for every head, so they match Day wise sales; other store groups and SPLM use the Business Performance Report
 - **Day wise sales**: each day of the month against the same day last year, for sales, GPV and GP+OI%, filtered by period (month to date or one day), store group, category head, CRP and category (level 3); plus a detail by division, head, CRP and category level 3 that follows the same filters. Footfall and basket are hidden when a CRP or category is chosen, because a bill with items from several categories would be counted more than once
 - **Outlets & targets**: about 1,000 outlets with target vs achievement, search and filters
 

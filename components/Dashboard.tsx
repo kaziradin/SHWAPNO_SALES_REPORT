@@ -324,19 +324,22 @@ function SortTh({ k, label, sort, onSort, cls }: { k: HeadSort["key"]; label: st
   );
 }
 
-/** SPLY for the all-stores and same-stores groups, from the day-wise file: the same days summed, with the
- *  same definitions. This month's figures stay as they were, and so do the other store groups. */
-function withDailySply(rows: HeadRow[], dailyHeads: DailyHead[]): HeadRow[] {
+/** The all-stores and same-stores heads from the day-wise file, for this month and for SPLY: the days summed, with the
+ *  same definitions as the Day wise sales tab, so the two tabs agree. SPLM and the other store groups stay as they were. */
+function withDailyHeads(rows: HeadRow[], dailyHeads: DailyHead[]): HeadRow[] {
   const byHead = new Map(dailyHeads.map((h) => [`${h.division}|${h.head}`, h]));
   const sum = (a: (number | null)[]) => a.reduce<number>((t, v) => t + (v ?? 0), 0);
   const over = (n: number, d: number) => (d ? n / d : null);
   return rows.map((r) => {
     const d = byHead.get(`${r.division}|${r.head}`);
     if (!d) return r;
+    const sales = sum(d.sales), ff = sum(d.ff), gpv = sum(d.gpv), gpvOi = gpv + sum(d.valueAdj);
     const salesLast = sum(d.splySales), ffLast = sum(d.splyFf);
     const gpvLast = sum(d.splyGpv), gpvOiLast = gpvLast + sum(d.splyValueAdj);
     return {
       ...r,
+      sales, ff: ff || null, bs: over(sales, ff),
+      gpv, gp: over(gpv, sales), gpvOi, gpOi: over(gpvOi, sales),
       salesLast, ffLast: ffLast || null, bsLast: over(salesLast, ffLast),
       gpvLast, gpLast: over(gpvLast, salesLast), gpvOiLast, gpOiLast: over(gpvOiLast, salesLast),
     };
@@ -349,8 +352,8 @@ function Heads({ report, cmp, daily }: { report: Report; cmp: Cmp; daily: DailyD
   const blocks: Partial<Record<SegmentKey, HeadRow[]>> = cmp === "sply"
     ? {
         ...reportBlocks,
-        all: withDailySply(reportBlocks.all ?? [], daily.groups.all.heads),
-        same: withDailySply(reportBlocks.same ?? [], daily.groups.same.heads),
+        all: withDailyHeads(reportBlocks.all ?? [], daily.groups.all.heads),
+        same: withDailyHeads(reportBlocks.same ?? [], daily.groups.same.heads),
       }
     : reportBlocks;
   const keys = (Object.keys(SEGMENT_LABELS) as SegmentKey[]).filter((k) => blocks[k]?.length);
@@ -368,17 +371,23 @@ function Heads({ report, cmp, daily }: { report: Report; cmp: Cmp; daily: DailyD
 
   const rows = sortHeads(blocks[seg] ?? [], hsort);
   const sum = (f: (r: HeadRow) => number | null | undefined) => rows.reduce((t, r) => t + (f(r) ?? 0), 0);
-  const S = sum((r) => r.sales), L = sum((r) => r.salesLast);
-  const G = sum((r) => r.gpv), GL = sum((r) => r.gpvLast);
-  const GO = sum((r) => r.gpvOi), GOL = sum((r) => r.gpvOiLast);
-  const FF = sum((r) => r.ff), FFL = sum((r) => r.ffLast);
-  const companyTotal = report[cmp].segments[seg]?.total?.sales ?? null;
+  // all stores and same stores take their totals from the day-wise file, which covers every head, so the figures here
+  // match the Day wise sales tab; the other store groups add up the heads
+  const dayTotal = cmp === "sply" && (seg === "all" || seg === "same") ? daily.groups[seg].total : null;
+  const dsum = (a: (number | null)[]) => a.reduce<number>((t, v) => t + (v ?? 0), 0);
+  const headsSales = sum((r) => r.sales);
+  const S = dayTotal ? dsum(dayTotal.sales) : headsSales, L = dayTotal ? dsum(dayTotal.splySales) : sum((r) => r.salesLast);
+  const G = dayTotal ? dsum(dayTotal.gpv) : sum((r) => r.gpv), GL = dayTotal ? dsum(dayTotal.splyGpv) : sum((r) => r.gpvLast);
+  const GO = dayTotal ? G + dsum(dayTotal.valueAdj) : sum((r) => r.gpvOi);
+  const GOL = dayTotal ? GL + dsum(dayTotal.splyValueAdj) : sum((r) => r.gpvOiLast);
+  const FF = dayTotal ? dsum(dayTotal.ff) : sum((r) => r.ff), FFL = dayTotal ? dsum(dayTotal.splyFf) : sum((r) => r.ffLast);
+  const companyTotal = dayTotal ? S : report[cmp].segments[seg]?.total?.sales ?? null;
   const gp = ratioOf(G, S), gpL = ratioOf(GL, L), goi = ratioOf(GO, S), goiL = ratioOf(GOL, L);
   const grS = L ? S / L - 1 : null, grG = GL ? G / GL - 1 : null, grGO = GOL ? GO / GOL - 1 : null;
   const ppOf = (a: number | null, b: number | null) => (a != null && b != null ? a - b : null);
 
   const kpi = [
-    { label: `Sales · ${rows.length} heads`, value: crFmt(S), sply: `${s}: ${crFmt(L)}`, delta: `${crSigned(S - L)}   ${arrowOf(toneOfNum(grS))}${signedPct(grS, 2)}`, t: toneOfNum(grS) },
+    { label: dayTotal ? "Sales" : `Sales · ${rows.length} heads`, value: crFmt(S), sply: `${s}: ${crFmt(L)}`, delta: `${crSigned(S - L)}   ${arrowOf(toneOfNum(grS))}${signedPct(grS, 2)}`, t: toneOfNum(grS) },
     { label: "GP%", value: pct(gp, 2), sply: `${s}: ${pct(gpL, 2)}`, delta: signedPct(ppOf(gp, gpL), 2), t: toneOfNum(ppOf(gp, gpL)) },
     { label: "GPV", value: crFmt(G), sply: `${s}: ${crFmt(GL)}`, delta: `${crSigned(G - GL)}   ${arrowOf(toneOfNum(grG))}${signedPct(grG, 2)}`, t: toneOfNum(grG) },
     { label: "GP+OI%", value: pct(goi, 2), sply: `${s}: ${pct(goiL, 2)}`, delta: signedPct(ppOf(goi, goiL), 2), t: toneOfNum(ppOf(goi, goiL)) },
@@ -421,7 +430,7 @@ function Heads({ report, cmp, daily }: { report: Report; cmp: Cmp; daily: DailyD
     };
     const body: ExportCell[][] = [
       ...rows.map((r) => [titleCase(r.division), roleName(r.role), r.head, ...rowValues(r)]),
-      ["Total (" + rows.length + " heads)", "", "", ...rowValues({
+      [dayTotal ? "Total (all category heads)" : "Total (" + rows.length + " heads)", "", "", ...rowValues({
         sales: S, salesLast: L, gpv: G, gpvLast: GL, gp: gp, gpLast: gpL,
         gpvOi: GO, gpvOiLast: GOL, gpOi: goi, gpOiLast: goiL, ff: FF, ffLast: FFL,
       })],
@@ -451,13 +460,13 @@ function Heads({ report, cmp, daily }: { report: Report; cmp: Cmp; daily: DailyD
       </section>
       {cmp === "sply" && (
         <p className="ov-note">
-          {seg === "all" || seg === "same"
-            ? "SPLY for this store group comes from the day-wise file (Day wise Sales GP Trend.xlsx)."
-            : "SPLY for this store group comes from the Business Performance Report; the day-wise file covers all stores and same stores only."}
+          {dayTotal
+            ? `This month and SPLY for this store group come from the day-wise file (Day wise Sales GP Trend.xlsx, ${daily.periodLabel}), so the figures match the Day wise sales tab.`
+            : "This store group comes from the Business Performance Report; the day-wise file covers all stores and same stores only."}
         </p>
       )}
       {companyTotal != null && (
-        <p className="ov-note">Heads total {crOrDash(S)} of the company total {crOrDash(companyTotal)}; the rest is outside category heads (for example Restaurant).</p>
+        <p className="ov-note">Heads total {crOrDash(headsSales)} of the company total {crOrDash(companyTotal)}; the rest is outside category heads (for example Restaurant).</p>
       )}
 
       <div className="ov-section-head"><h2>Sales performance</h2></div>
@@ -524,7 +533,7 @@ function Heads({ report, cmp, daily }: { report: Report; cmp: Cmp; daily: DailyD
             {rows.length > 0 && (
               <tfoot>
                 <tr>
-                  <th scope="row" style={{ textAlign: "left" }}>Total ({rows.length} heads)</th>
+                  <th scope="row" style={{ textAlign: "left" }}>{dayTotal ? "Total (all category heads)" : `Total (${rows.length} heads)`}</th>
                   <Num value={crOrDash(S)} {...gFrom(S, L)} />
                   <Num value={crOrDash(G)} {...gFrom(G, GL)} />
                   <Num value={pct(gp, 2)} {...pFrom(gp, gpL)} />
