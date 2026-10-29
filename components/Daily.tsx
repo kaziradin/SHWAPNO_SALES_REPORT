@@ -199,7 +199,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
       </section>
       <p className="ov-note">
         {selectionLabel}, {GROUP_LABEL[group].toLowerCase()}, {periodText}. Each day is compared with the same day last year.
-        {crpSel && " Footfall and basket are not recorded per CRP, so they show –."}
+        {crpSel && " Footfall and basket show – for a single CRP: a bill with items from several categories would be counted more than once."}
       </p>
 
       <div className="day-charts">
