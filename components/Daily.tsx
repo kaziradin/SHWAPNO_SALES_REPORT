@@ -24,7 +24,7 @@ type Metric = {
   format: "money" | "int" | "pct";
   /** Needs footfall, which cannot be worked out for a single CRP, so these rows are hidden when a CRP is chosen. */
   footfall?: boolean;
-  /** A money amount, shown in crore or lakh; counts and basket are shown as plain figures. */
+  /** A money amount, shown in crore; counts and basket are shown as plain figures. */
   crore?: boolean;
   now: (f: Figures, x: Ratios) => number | null;
   prev: (f: Figures, x: Ratios) => number | null;

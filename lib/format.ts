@@ -1,4 +1,4 @@
-// Money is shown with crFmt below (crore, lakh); counts such as footfall use these plain formats.
+// Money is shown with crFmt below (crore); counts such as footfall use these plain formats.
 export function int(v: number | null | undefined): string {
   return v == null ? "–" : Math.round(v).toLocaleString("en-IN");
 }
@@ -64,18 +64,17 @@ export const roleName = (role: string) => {
   return r === r.toUpperCase() ? titleCase(r) : r;
 };
 
-/** How every money amount is shown: 12.34 Cr from one crore, 1.02 Lac from one lakh up to a crore, otherwise the plain number. */
+/** How every money amount is shown: crore with two decimals, for example 12.34 Cr. Under half a lakh it reads 0.00 Cr. */
 export const crFmt = (v: number) => {
-  const a = Math.abs(v), sign = v < 0 ? "−" : "";
-  const two = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  // the unit is chosen on the rounded figure, so 99.996 Lac reads 1.00 Cr and not 100.00 Lac
-  const crore = Math.round((a / 1e7) * 100) / 100;
-  if (crore >= 1) return `${sign}${two(crore)} Cr`;
-  const lac = Math.round((a / 1e5) * 100) / 100;
-  if (lac >= 1) return `${sign}${two(lac)} Lac`;
-  return `${sign}${Math.round(a).toLocaleString("en-US")}`;
+  const crore = Math.round((Math.abs(v) / 1e7) * 100) / 100;
+  const text = crore.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${v < 0 && crore > 0 ? "−" : ""}${text} Cr`;
 };
-export const crSigned = (v: number) => `${v >= 0 ? "+" : "−"}${crFmt(Math.abs(v))}`;
+/** The same with a sign, for differences; a difference that rounds to zero carries no sign. */
+export const crSigned = (v: number) => {
+  const crore = Math.round((Math.abs(v) / 1e7) * 100) / 100;
+  return `${crore === 0 ? "" : v < 0 ? "−" : "+"}${crFmt(Math.abs(v))}`;
+};
 /** The same, or a dash when there is no value. */
 export const crOrDash = (v: number | null | undefined) => (v == null || !isFinite(v) ? "–" : crFmt(v));
 

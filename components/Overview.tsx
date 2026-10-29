@@ -53,12 +53,12 @@ function Change({ kind, v }: { kind: Kind; v: number | null }) {
   );
 }
 
-/** Money in crore (1 Cr = 10,000,000), or in lakh below a crore: 12.34 Cr, 1.02 Lac. */
+/** Money in crore (1 Cr = 10,000,000), two decimals: 12.34 Cr. */
 const crore = (v: number | null, signed = false) => {
   if (v == null || !isFinite(v)) return "–";
   return `${v < 0 ? "−" : signed && v > 0 ? "+" : ""}${crFmt(Math.abs(v))}`;
 };
-/** A metric's value the way the page shows it: crore or lakh for money, full figures for counts, % for ratios. */
+/** A metric's value the way the page shows it: crore for money, full figures for counts, % for ratios. */
 const showValue = (m: Metric, v: number | null) => (m.crore ? crore(v) : fmt(m.kind, v));
 
 /** Tooltip rows: Sales, GPV and GPV+OI in crore; footfall and basket as-is; % metrics in %. */

@@ -8,7 +8,7 @@ A Next.js dashboard built from two daily workbooks in `..\1. SALES FILE`:
 - **Day wise sales**: each day of the month against the same day last year, for sales, GPV and GP+OI%, filtered by period (month to date or one day), store group, category head and CRP; plus a detail by division, head, CRP and category level 3 that follows those filters and has its own category filter
 - **Outlets & targets**: about 1,000 outlets with target vs achievement, search and filters
 
-Numbers are shown the same way on every tab. Money is in crore with two decimals (`12.34 Cr`), in lakh from one lakh up to a crore (`1.02 Lac`), and as a plain number below a lakh. Footfall, basket and other counts are plain numbers, and percentages have two decimals (`0.00%`). Excel downloads keep the full numbers. The detail table on Day wise sales lists COMPANY GOODS, PACKED COMMODITY, LOOSE COMMODITY, FRESH PRODUCE, GENERAL MERCHANDISE and LIFESTYLE in that order; its grand total covers every division.
+Numbers are shown the same way on every tab. Money is always in crore with two decimals (`12.34 Cr`); an amount under half a lakh reads `0.00 Cr`. Footfall, basket and other counts are plain numbers, and percentages have two decimals (`0.00%`). Excel downloads keep the full numbers. The detail table on Day wise sales lists COMPANY GOODS, PACKED COMMODITY, LOOSE COMMODITY, FRESH PRODUCE, GENERAL MERCHANDISE and LIFESTYLE in that order; its grand total covers every division.
 
 The Overview, Category heads and Outlets tabs can be compared with **SPLY** (same period last year) or **SPLM** (same period last month). The Day wise sales tab compares each day with the same day last year.
 
