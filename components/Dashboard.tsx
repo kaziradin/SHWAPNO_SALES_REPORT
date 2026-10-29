@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import type { Cat3Row, DailyData, DailyHead, HeadRow, Metrics, MonthOverview, Outlet, Report, SegmentKey } from "@/lib/types";
 import {
-  abbrOf, arrowOf, crFmt, crSigned, diff, growth, int, longDate, monthName, pct, pp, roleName, signedPct, taka, titleCase, toneOfNum,
+  abbrOf, arrowOf, crFmt, crOrDash, crSigned, diff, growth, int, longDate, monthName, pct, pp, roleName, signedPct, titleCase, toneOfNum,
 } from "@/lib/format";
 import { DivergingBars, useTooltip, type TipRow } from "./charts";
 import { downloadExcel, ExportButton, type ExportCell, type ExportCol } from "@/lib/export";
@@ -153,18 +153,6 @@ function Delta({ v, kind = "pct" }: { v: number | null; kind?: "pct" | "pp" }) {
   const tone = Math.abs(v) < 0.0005 ? "flat" : v > 0 ? "up" : "down";
   const arrow = tone === "up" ? "▲ " : tone === "down" ? "▼ " : "";
   return <span className={`delta ${tone}`}>{arrow}{kind === "pp" ? pp(v) : signedPct(v)}</span>;
-}
-
-function metricTip(m: Metrics, c: Cmp): TipRow[] {
-  const s = CMP_LABEL[c].short;
-  return [
-    ["Sales", taka(m.sales)],
-    [`Sales ${s}`, taka(m.salesLast)],
-    ["Growth", signedPct(growth(m.sales, m.salesLast))],
-    ["Footfall", int(m.ff)],
-    ["Basket size", taka(m.bs)],
-    ["GP %", pct(m.gp, 2)],
-  ];
 }
 
 type SortState<K extends string> = { key: K; dir: 1 | -1 };
@@ -468,7 +456,7 @@ function Heads({ report, cmp, daily }: { report: Report; cmp: Cmp; daily: DailyD
         </p>
       )}
       {companyTotal != null && (
-        <p className="ov-note">Heads total {money(S)} of the company total {money(companyTotal)}; the rest is outside category heads (for example Restaurant).</p>
+        <p className="ov-note">Heads total {crOrDash(S)} of the company total {crOrDash(companyTotal)}; the rest is outside category heads (for example Restaurant).</p>
       )}
 
       <section className="ov-attn" aria-labelledby="hattn">
@@ -539,10 +527,10 @@ function Heads({ report, cmp, daily }: { report: Report; cmp: Cmp; daily: DailyD
                     {cmp === "sply" ? <button className="linkish" onClick={() => setDrill(r)}>{r.head} ›</button> : r.head}
                     <div className="sub">{titleCase(r.division)} · {roleName(r.role)}</div>
                   </th>
-                  <Num value={money(r.sales ?? 0)} {...gFrom(r.sales, r.salesLast)} />
-                  <Num value={money(r.gpv ?? 0)} {...gFrom(r.gpv, r.gpvLast)} />
+                  <Num value={crOrDash(r.sales ?? 0)} {...gFrom(r.sales, r.salesLast)} />
+                  <Num value={crOrDash(r.gpv ?? 0)} {...gFrom(r.gpv, r.gpvLast)} />
                   <Num value={pct(r.gp, 2)} {...pFrom(r.gp, r.gpLast)} />
-                  <Num value={money(r.gpvOi ?? 0)} {...gFrom(r.gpvOi, r.gpvOiLast)} />
+                  <Num value={crOrDash(r.gpvOi ?? 0)} {...gFrom(r.gpvOi, r.gpvOiLast)} />
                   <Num value={pct(r.gpOi, 2)} {...pFrom(r.gpOi, r.gpOiLast)} />
                   <Num value={money(r.ff ?? 0)} {...gFrom(r.ff, r.ffLast)} />
                   <Num value={money((r.sales ?? 0) / (r.ff || 1))} {...gFrom((r.sales ?? 0) / (r.ff || 1), (r.salesLast ?? 0) / (r.ffLast || 1))} />
@@ -553,10 +541,10 @@ function Heads({ report, cmp, daily }: { report: Report; cmp: Cmp; daily: DailyD
               <tfoot>
                 <tr>
                   <th scope="row" style={{ textAlign: "left" }}>Total ({rows.length} heads)</th>
-                  <Num value={money(S)} {...gFrom(S, L)} />
-                  <Num value={money(G)} {...gFrom(G, GL)} />
+                  <Num value={crOrDash(S)} {...gFrom(S, L)} />
+                  <Num value={crOrDash(G)} {...gFrom(G, GL)} />
                   <Num value={pct(gp, 2)} {...pFrom(gp, gpL)} />
-                  <Num value={money(GO)} {...gFrom(GO, GOL)} />
+                  <Num value={crOrDash(GO)} {...gFrom(GO, GOL)} />
                   <Num value={pct(goi, 2)} {...pFrom(goi, goiL)} />
                   <Num value={money(FF)} {...gFrom(FF, FFL)} />
                   <Num value={money(S / (FF || 1))} {...gFrom(S / (FF || 1), L / (FFL || 1))} />
@@ -627,10 +615,10 @@ function MetricCells({ a }: { a: Agg }) {
   const goil = a.sl ? a.goil / a.sl : null;
   return (
     <>
-      <td><div>{fm(a.s)}</div><div><Growth now={a.s} last={a.sl} /></div></td>
-      <td><div>{fm(a.gpv)}</div><div><Growth now={a.gpv} last={a.gpvl} /></div></td>
+      <td><div>{crFmt(a.s)}</div><div><Growth now={a.s} last={a.sl} /></div></td>
+      <td><div>{crFmt(a.gpv)}</div><div><Growth now={a.gpv} last={a.gpvl} /></div></td>
       <td><div>{pct(gp, 2)}</div><div><PointChange now={gp} last={gpl} /></div></td>
-      <td><div>{fm(a.goi)}</div><div><Growth now={a.goi} last={a.goil} /></div></td>
+      <td><div>{crFmt(a.goi)}</div><div><Growth now={a.goi} last={a.goil} /></div></td>
       <td><div>{pct(goi, 2)}</div><div><PointChange now={goi} last={goil} /></div></td>
     </>
   );
@@ -828,7 +816,7 @@ function HeadDrill({ head, headSame, cat, seg, onBack }: { head: HeadRow; headSa
       </div>
       {filtered.length === 0 && <p className="hint">No categories match these filters.</p>}
       {Math.abs(gap) >= 1 && (
-        <p className="hint">Category rows add up to {fm(all.s)}; the head row shows {fm(reference ?? 0)} (difference {fm(gap)}). The difference is in the source workbook.</p>
+        <p className="hint">Category rows add up to {crFmt(all.s)}; the head row shows {crFmt(reference ?? 0)} (difference {crFmt(gap)}). The difference is in the source workbook.</p>
       )}
       <p className="hint">Click a column heading to sort. Click + to show a person's categories. Rows with no sales at this level are hidden.</p>
     </div>
@@ -922,8 +910,8 @@ function LeaderSummary({ outlets }: { outlets: Outlet[] }) {
               <tr key={r.name}>
                 <td>{r.name}</td>
                 <td>{r.n}</td>
-                <td>{taka(r.target)}</td>
-                <td>{taka(r.achv)}</td>
+                <td>{crOrDash(r.target)}</td>
+                <td>{crOrDash(r.achv)}</td>
                 <td><AchCell a={r.ach} /></td>
                 <td>{r.hit} / {r.n}</td>
               </tr>
@@ -1022,8 +1010,8 @@ function Outlets({ outlets, cmp }: { outlets: Outlet[]; cmp: Cmp }) {
                   <td className="name" title={o.name}><span className="code">{o.code}</span>{o.name}</td>
                   <td className="l">{o.leader}</td>
                   <td className="l">{o.zonal}</td>
-                  <td>{taka(o.target)}</td>
-                  <td>{taka(o.achv)}</td>
+                  <td>{crOrDash(o.target)}</td>
+                  <td>{crOrDash(o.achv)}</td>
                   <td><AchCell a={achOf(o)} /></td>
                   <td><StatusPill a={achOf(o)} /></td>
                   <td><Delta v={salesG(o)} /></td>

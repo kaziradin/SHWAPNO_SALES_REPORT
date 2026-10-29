@@ -1,21 +1,13 @@
-// Bangladeshi money convention: crore (1e7) and lakh (1e5).
-export function taka(v: number | null | undefined, digits = 2): string {
-  if (v == null) return "–";
-  const a = Math.abs(v);
-  if (a >= 1e7) return `৳${(v / 1e7).toFixed(digits)} Cr`;
-  if (a >= 1e5) return `৳${(v / 1e5).toFixed(digits)} L`;
-  return `৳${Math.round(v).toLocaleString("en-IN")}`;
-}
-
+// Money is shown with crFmt below (crore, lakh); counts such as footfall use these plain formats.
 export function int(v: number | null | undefined): string {
   return v == null ? "–" : Math.round(v).toLocaleString("en-IN");
 }
 
-export function pct(v: number | null | undefined, digits = 1): string {
+export function pct(v: number | null | undefined, digits = 2): string {
   return v == null || !isFinite(v) ? "–" : `${(v * 100).toFixed(digits)}%`;
 }
 
-export function signedPct(v: number | null | undefined, digits = 1): string {
+export function signedPct(v: number | null | undefined, digits = 2): string {
   if (v == null || !isFinite(v)) return "–";
   return `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v * 100).toFixed(digits)}%`;
 }
@@ -72,9 +64,20 @@ export const roleName = (role: string) => {
   return r === r.toUpperCase() ? titleCase(r) : r;
 };
 
-/** 12.34 Cr, from taka */
-export const crFmt = (v: number) => `${(v / 1e7).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Cr`;
+/** How every money amount is shown: 12.34 Cr from one crore, 1.02 Lac from one lakh up to a crore, otherwise the plain number. */
+export const crFmt = (v: number) => {
+  const a = Math.abs(v), sign = v < 0 ? "−" : "";
+  const two = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // the unit is chosen on the rounded figure, so 99.996 Lac reads 1.00 Cr and not 100.00 Lac
+  const crore = Math.round((a / 1e7) * 100) / 100;
+  if (crore >= 1) return `${sign}${two(crore)} Cr`;
+  const lac = Math.round((a / 1e5) * 100) / 100;
+  if (lac >= 1) return `${sign}${two(lac)} Lac`;
+  return `${sign}${Math.round(a).toLocaleString("en-US")}`;
+};
 export const crSigned = (v: number) => `${v >= 0 ? "+" : "−"}${crFmt(Math.abs(v))}`;
+/** The same, or a dash when there is no value. */
+export const crOrDash = (v: number | null | undefined) => (v == null || !isFinite(v) ? "–" : crFmt(v));
 
 export const toneOfNum = (v: number | null | undefined): "up" | "down" | "flat" =>
   v == null || !isFinite(v) || Math.abs(v) < 0.00005 ? "flat" : v > 0 ? "up" : "down";

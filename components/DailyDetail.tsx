@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import type { DailyData, DailyDetailData, DailyHead, DayFields, DetailRow } from "@/lib/types";
-import { full, growth, pct, signedFull, titleCase } from "@/lib/format";
+import { crOrDash, growth, pct, titleCase } from "@/lib/format";
 import { downloadExcel, ExportButton, type ExportCell, type ExportCol } from "@/lib/export";
 import {
-  Cell, Chg, dayLong, dayMonth, difference, diffChg, Figures, growthChg, MTD, ratiosOf, SortState, SortTh, sumFigures, uniqSorted,
+  Cell, dayLong, dayMonth, difference, diffChg, Figures, growthChg, MTD, ratiosOf, SortState, SortTh, sumFigures, uniqSorted,
 } from "@/lib/daily";
 
 type Amounts = Pick<DayFields, "sales" | "splySales" | "gpv" | "splyGpv" | "valueAdj" | "splyValueAdj">;
@@ -19,7 +19,8 @@ type Node = { id: string; level: number; name: string; figures: Figures; childre
 const SEP = "\u001f";
 const GROUP_LABEL: Record<Group, string> = { all: "All stores", same: "Same stores" };
 const LEVEL_NAME: Record<number, string> = { 1: "Division", 2: "Head", 3: "CRP", 4: "Category level 3" };
-const BLANK: Chg = { text: null, t: "flat" };
+/** The divisions the table lists, in this order. The others are left out; the grand total still includes them. */
+const SHOWN_DIVISIONS = ["COMPANY GOODS", "PACKED COMMODITY", "LOOSE COMMODITY", "FRESH PRODUCE", "GENERAL MERCHANDISE", "LIFESTYLE"];
 
 /** Figures for the chosen days, summed from the money fields. GPV+OI is GPV plus value adj, as in the workbook. */
 function periodFigures(a: Amounts, idx: number[]): Figures {
@@ -82,23 +83,26 @@ function sortValue(n: Node, key: SortKey): number | string {
   }
 }
 
-/** The rows in display order, with the children of open rows; `all` lists every row regardless. */
+/** The rows in display order, with the children of open rows; `all` lists every row regardless.
+ *  The divisions keep their fixed order; the rows inside each division follow the chosen sort. */
 function flatten(nodes: Node[], sort: Sort, open: Set<string>, depth: number, all: boolean): { node: Node; depth: number }[] {
   const m = sort.dir === "asc" ? 1 : -1;
-  const ordered = [...nodes].sort((a, b) => {
-    const x = sortValue(a, sort.key), y = sortValue(b, sort.key);
-    return typeof x === "string" ? x.localeCompare(y as string) * m : ((x as number) - (y as number)) * m;
-  });
+  const ordered = depth === 0
+    ? [...nodes].sort((a, b) => SHOWN_DIVISIONS.indexOf(a.name) - SHOWN_DIVISIONS.indexOf(b.name))
+    : [...nodes].sort((a, b) => {
+        const x = sortValue(a, sort.key), y = sortValue(b, sort.key);
+        return typeof x === "string" ? x.localeCompare(y as string) * m : ((x as number) - (y as number)) * m;
+      });
   return ordered.flatMap((node) => {
     const expanded = node.children.length > 0 && (all || open.has(node.id));
     return [{ node, depth }, ...(expanded ? flatten(node.children, sort, open, depth + 1, all) : [])];
   });
 }
 
-/** Divisions and categories are shown in title case; heads, CRPs (people) and the placeholders as written. */
+/** Divisions are shown as the workbook writes them (COMPANY GOODS); categories in title case; heads, CRPs and placeholders as written. */
 function shownName(n: Node): string {
   if (n.name === "0") return "(not set)";
-  if (n.name.startsWith("(") || n.level === 2 || n.level === 3) return n.name;
+  if (n.name.startsWith("(") || n.level !== 4) return n.name;
   return titleCase(n.name);
 }
 
@@ -157,7 +161,7 @@ function DetailTable({ daily, detail, group, idx, label, compare, groupLabel, he
 }) {
   // the rows for the head and CRP chosen at the top; the category list offers what exists among them
   const baseRows = detail.groups[group].filter(
-    (r) => (!head || (r.division === head.division && r.head === head.head)) && (!crp || r.crp === crp),
+    (r) => SHOWN_DIVISIONS.includes(r.division) && (!head || (r.division === head.division && r.head === head.head)) && (!crp || r.crp === crp),
   );
   const catOptions = uniqSorted(baseRows.map((r) => r.category));
   const catSel = cat && catOptions.includes(cat) ? cat : "";
@@ -175,14 +179,10 @@ function DetailTable({ daily, detail, group, idx, label, compare, groupLabel, he
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterKey]);
 
-  // the day-wise total and what the rows add up to; the difference is in the workbook total with no row
+  // the grand total is the workbook's total for every division, including the ones not listed; with a filter on,
+  // the total is of the listed rows that match
   const dayTotal = periodFigures(daily.groups[group].total, idx);
   const rowsTotal = sumFigures(tree.map((n) => n.figures));
-  const unsplit = {
-    sales: difference(dayTotal.sales, rowsTotal.sales),
-    gpv: difference(dayTotal.gpv, rowsTotal.gpv),
-    gpvOi: difference(dayTotal.gpvOi, rowsTotal.gpvOi),
-  };
   const dayX = ratiosOf(dayTotal);
   const rowsX = ratiosOf(rowsTotal);
 
@@ -208,11 +208,7 @@ function DetailTable({ daily, detail, group, idx, label, compare, groupLabel, he
     const rowsOut: ExportCell[][] = everything.map(({ node }) => [LEVEL_NAME[node.level], shownName(node), ...cells(node.figures)]);
     const body: ExportCell[][] = filtered
       ? [...rowsOut, ["", "Total (filtered rows)", ...cells(rowsTotal)]]
-      : [
-          ...rowsOut,
-          ["", "Not in any row (workbook total minus rows)", unsplit.sales, null, null, unsplit.gpv, null, null, null, null, null, unsplit.gpvOi, null, null, null, null, null],
-          ["", "Total", ...cells(dayTotal)],
-        ];
+      : [...rowsOut, ["", "Grand total (all divisions)", ...cells(dayTotal)]];
     downloadExcel(`day-wise-detail-${group}${filtered ? "-filtered" : ""}.xlsx`, "Day wise detail", cols, body);
   };
 
@@ -236,7 +232,7 @@ function DetailTable({ daily, detail, group, idx, label, compare, groupLabel, he
         <div className="ov-table-scroll">
           <table className="ov-table">
             <caption>
-              {label}, {groupLabel}{filtered ? ", filtered" : ""}. Compared with {compare}. Click a heading to sort within each level.
+              {label}, {groupLabel}{filtered ? ", filtered" : ""}. Compared with {compare}. Click a heading to sort the rows inside each division.
             </caption>
             <thead>
               <tr>
@@ -262,10 +258,10 @@ function DetailTable({ daily, detail, group, idx, label, compare, groupLabel, he
                       )}{" "}
                       {shownName(node)}
                     </th>
-                    <Cell value={full(f.sales)} chg={growthChg(f.sales, f.splySales)} />
-                    <Cell value={full(f.gpv)} chg={growthChg(f.gpv, f.splyGpv)} />
+                    <Cell value={crOrDash(f.sales)} chg={growthChg(f.sales, f.splySales)} />
+                    <Cell value={crOrDash(f.gpv)} chg={growthChg(f.gpv, f.splyGpv)} />
                     <Cell value={pct(x.gp, 2)} chg={diffChg(x.gp, x.splyGp)} />
-                    <Cell value={full(f.gpvOi)} chg={growthChg(f.gpvOi, f.splyGpvOi)} />
+                    <Cell value={crOrDash(f.gpvOi)} chg={growthChg(f.gpvOi, f.splyGpvOi)} />
                     <Cell value={pct(x.goi, 2)} chg={diffChg(x.goi, x.splyGoi)} />
                   </tr>
                 );
@@ -275,10 +271,10 @@ function DetailTable({ daily, detail, group, idx, label, compare, groupLabel, he
               <tfoot>
                 <tr>
                   <th scope="row" style={{ textAlign: "left" }}>Total (filtered rows)</th>
-                  <Cell value={full(rowsTotal.sales)} chg={growthChg(rowsTotal.sales, rowsTotal.splySales)} />
-                  <Cell value={full(rowsTotal.gpv)} chg={growthChg(rowsTotal.gpv, rowsTotal.splyGpv)} />
+                  <Cell value={crOrDash(rowsTotal.sales)} chg={growthChg(rowsTotal.sales, rowsTotal.splySales)} />
+                  <Cell value={crOrDash(rowsTotal.gpv)} chg={growthChg(rowsTotal.gpv, rowsTotal.splyGpv)} />
                   <Cell value={pct(rowsX.gp, 2)} chg={diffChg(rowsX.gp, rowsX.splyGp)} />
-                  <Cell value={full(rowsTotal.gpvOi)} chg={growthChg(rowsTotal.gpvOi, rowsTotal.splyGpvOi)} />
+                  <Cell value={crOrDash(rowsTotal.gpvOi)} chg={growthChg(rowsTotal.gpvOi, rowsTotal.splyGpvOi)} />
                   <Cell value={pct(rowsX.goi, 2)} chg={diffChg(rowsX.goi, rowsX.splyGoi)} />
                 </tr>
               </tfoot>
@@ -286,19 +282,11 @@ function DetailTable({ daily, detail, group, idx, label, compare, groupLabel, he
             {tree.length > 0 && !filtered && (
               <tfoot>
                 <tr>
-                  <th scope="row" style={{ textAlign: "left" }}>Not in any row (workbook total minus rows)</th>
-                  <Cell value={unsplit.sales == null ? "–" : signedFull(unsplit.sales)} chg={BLANK} />
-                  <Cell value={unsplit.gpv == null ? "–" : signedFull(unsplit.gpv)} chg={BLANK} />
-                  <Cell value="–" chg={BLANK} />
-                  <Cell value={unsplit.gpvOi == null ? "–" : signedFull(unsplit.gpvOi)} chg={BLANK} />
-                  <Cell value="–" chg={BLANK} />
-                </tr>
-                <tr>
-                  <th scope="row" style={{ textAlign: "left" }}>Total (day-wise)</th>
-                  <Cell value={full(dayTotal.sales)} chg={growthChg(dayTotal.sales, dayTotal.splySales)} />
-                  <Cell value={full(dayTotal.gpv)} chg={growthChg(dayTotal.gpv, dayTotal.splyGpv)} />
+                  <th scope="row" style={{ textAlign: "left" }}>Grand total (all divisions)</th>
+                  <Cell value={crOrDash(dayTotal.sales)} chg={growthChg(dayTotal.sales, dayTotal.splySales)} />
+                  <Cell value={crOrDash(dayTotal.gpv)} chg={growthChg(dayTotal.gpv, dayTotal.splyGpv)} />
                   <Cell value={pct(dayX.gp, 2)} chg={diffChg(dayX.gp, dayX.splyGp)} />
-                  <Cell value={full(dayTotal.gpvOi)} chg={growthChg(dayTotal.gpvOi, dayTotal.splyGpvOi)} />
+                  <Cell value={crOrDash(dayTotal.gpvOi)} chg={growthChg(dayTotal.gpvOi, dayTotal.splyGpvOi)} />
                   <Cell value={pct(dayX.goi, 2)} chg={diffChg(dayX.goi, dayX.splyGoi)} />
                 </tr>
               </tfoot>

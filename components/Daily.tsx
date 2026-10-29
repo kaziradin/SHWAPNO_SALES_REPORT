@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { DailyData, DailyDetailData, DailyHead, DayFields } from "@/lib/types";
-import { abbrOf, arrowOf, crFmt, crSigned, full, growth, pct, roleName, signedPct, toneOfNum } from "@/lib/format";
+import { abbrOf, arrowOf, crFmt, crOrDash, crSigned, full, growth, pct, roleName, signedPct, toneOfNum } from "@/lib/format";
 import { downloadExcel, ExportButton, type ExportCell, type ExportCol } from "@/lib/export";
 import {
   Cell, dayFieldsOfRows, dayLong, dayMonth, dayWeekday, difference, diffChg, Figures, growthChg, isFriSat, MTD, Ratios, ratiosOf,
@@ -24,14 +24,16 @@ type Metric = {
   format: "money" | "int" | "pct";
   /** Needs footfall, which cannot be worked out for a single CRP, so these rows are hidden when a CRP is chosen. */
   footfall?: boolean;
+  /** A money amount, shown in crore or lakh; counts and basket are shown as plain figures. */
+  crore?: boolean;
   now: (f: Figures, x: Ratios) => number | null;
   prev: (f: Figures, x: Ratios) => number | null;
 };
 const METRICS: Metric[] = [
-  { label: "Sales", kind: "amount", format: "money", now: (f) => f.sales, prev: (f) => f.splySales },
-  { label: "GPV", kind: "amount", format: "money", now: (f) => f.gpv, prev: (f) => f.splyGpv },
+  { label: "Sales", kind: "amount", format: "money", crore: true, now: (f) => f.sales, prev: (f) => f.splySales },
+  { label: "GPV", kind: "amount", format: "money", crore: true, now: (f) => f.gpv, prev: (f) => f.splyGpv },
   { label: "GP%", kind: "ratio", format: "pct", now: (_, x) => x.gp, prev: (_, x) => x.splyGp },
-  { label: "GPV+OI", kind: "amount", format: "money", now: (f) => f.gpvOi, prev: (f) => f.splyGpvOi },
+  { label: "GPV+OI", kind: "amount", format: "money", crore: true, now: (f) => f.gpvOi, prev: (f) => f.splyGpvOi },
   { label: "GP+OI%", kind: "ratio", format: "pct", now: (_, x) => x.goi, prev: (_, x) => x.splyGoi },
   { label: "Footfall", kind: "amount", format: "int", footfall: true, now: (f) => f.ff, prev: (f) => f.splyFf },
   { label: "Basket", kind: "amount", format: "money", footfall: true, now: (_, x) => x.bs, prev: (_, x) => x.splyBs },
@@ -134,7 +136,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
     { label: "GPV+OI", value: cr(total.gpvOi), sply: `SPLY: ${cr(total.splyGpvOi)}`, ...moneyDelta(total.gpvOi, total.splyGpvOi) },
   ];
 
-  const shown = (m: Metric, v: number | null) => (m.kind === "ratio" ? pct(v, 2) : full(v));
+  const shown = (m: Metric, v: number | null) => (m.kind === "ratio" ? pct(v, 2) : m.crore ? crOrDash(v) : full(v));
   const changeOf = (m: Metric, n: number | null, p: number | null) => (m.kind === "ratio" ? diffChg(n, p) : growthChg(n, p));
 
   // the same layout as the table: a column per day, a Total column for the month, three rows per measure

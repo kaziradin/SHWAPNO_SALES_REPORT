@@ -1,7 +1,7 @@
 "use client";
 
 import type { DivisionRow, Metrics, MonthOverview, SegmentKey } from "@/lib/types";
-import { full, growth, pct, signedFull, signedPct } from "@/lib/format";
+import { crFmt, full, growth, pct, signedFull, signedPct } from "@/lib/format";
 import { useTooltip, useWidth, type TipRow } from "./charts";
 import { CMP_LABEL, SEGMENT_LABELS, type Cmp } from "./FilterBar";
 import { downloadExcel, ExportButton, type ExportCell, type ExportCol } from "@/lib/export";
@@ -53,12 +53,13 @@ function Change({ kind, v }: { kind: Kind; v: number | null }) {
   );
 }
 
-/** Crore (1 Cr = 10,000,000), used only in hover tooltips for money values. */
+/** Money in crore (1 Cr = 10,000,000), or in lakh below a crore: 12.34 Cr, 1.02 Lac. */
 const crore = (v: number | null, signed = false) => {
   if (v == null || !isFinite(v)) return "–";
-  const t = (Math.abs(v) / 1e7).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return `${signed ? (v > 0 ? "+" : v < 0 ? "−" : "") : v < 0 ? "−" : ""}${t} Cr`;
+  return `${v < 0 ? "−" : signed && v > 0 ? "+" : ""}${crFmt(Math.abs(v))}`;
 };
+/** A metric's value the way the page shows it: crore or lakh for money, full figures for counts, % for ratios. */
+const showValue = (m: Metric, v: number | null) => (m.crore ? crore(v) : fmt(m.kind, v));
 
 /** Tooltip rows: Sales, GPV and GPV+OI in crore; footfall and basket as-is; % metrics in %. */
 function tipRows(metric: Metric, row: Metrics | undefined, s: string): TipRow[] {
@@ -266,7 +267,7 @@ function OwnFranchise({ data, cmp, segment }: { data: MonthOverview; cmp: Cmp; s
       return (
         <div className="ovf-line" key={m.key}>
           <span className="ovf-k">{name}</span>
-          <span className="ovf-v">{fmt(m.kind, now)}</span>
+          <span className="ovf-v">{showValue(m, now)}</span>
           <Change kind={m.kind} v={change(m.kind, now, last)} />
         </div>
       );
@@ -345,7 +346,7 @@ function OwnFranchise({ data, cmp, segment }: { data: MonthOverview; cmp: Cmp; s
                     const now = val(rr, mm.now), last = lastVal(rr, mm);
                     return (
                       <td key={i}>
-                        <div className="ov-td-val">{fmt(mm.kind, now)}</div>
+                        <div className="ov-td-val">{showValue(mm, now)}</div>
                         <Change kind={mm.kind} v={change(mm.kind, now, last)} />
                       </td>
                     );
@@ -426,7 +427,7 @@ function DivisionTable({ rows, total, s }: { rows: Row[]; total: Metrics | undef
         const now = val(m, c.now), last = lastVal(m, c);
         return (
           <td key={c.key}>
-            <div className="ov-td-val">{fmt(c.kind, now)}</div>
+            <div className="ov-td-val">{showValue(c, now)}</div>
             <Change kind={c.kind} v={change(c.kind, now, last)} />
           </td>
         );
