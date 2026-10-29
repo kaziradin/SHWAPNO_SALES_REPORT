@@ -1,4 +1,25 @@
 import { arrowOf, growth, signedPct, toneOfNum } from "@/lib/format";
+import type { DayFields, DetailRow } from "@/lib/types";
+
+/** The Period choice that covers every day of the month so far. */
+export const MTD = "mtd";
+
+/** The distinct names in a list, without blanks, in alphabetical order. */
+export const uniqSorted = (values: (string | null)[]) =>
+  [...new Set(values.filter((v): v is string => v != null))].sort((a, b) => a.localeCompare(b));
+
+/** Day fields summed over detail rows, for a head or CRP choice. Footfall is not in the detail rows, so it stays blank. */
+export function dayFieldsOfRows(rows: DetailRow[], n: number): DayFields {
+  const sum = (pick: (r: DetailRow) => (number | null)[]) =>
+    Array.from({ length: n }, (_, i) => rows.reduce((t, r) => t + (pick(r)[i] ?? 0), 0));
+  const blank = Array.from({ length: n }, () => null as number | null);
+  return {
+    sales: sum((r) => r.sales), splySales: sum((r) => r.splySales),
+    gpv: sum((r) => r.gpv), splyGpv: sum((r) => r.splyGpv),
+    valueAdj: sum((r) => r.valueAdj), splyValueAdj: sum((r) => r.splyValueAdj),
+    ff: blank, splyFf: blank,
+  };
+}
 
 /** Figures for a day, a period or a row. GPV+OI is GPV plus value adj, as in the workbook. */
 export type Figures = {

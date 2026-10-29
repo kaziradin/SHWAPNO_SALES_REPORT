@@ -421,6 +421,9 @@ td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .drill-filters label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 600; color: #526176; }
 .drill-filters select { min-width: 240px; }
 
+/* Day wise sales main filters: Period, Store group, Category head and CRP share one row on a desktop screen */
+.day-filters select { min-width: 190px; max-width: 100%; }
+
 /* Day wise sales: sales full width, then the ratios in pairs (GPV beside GPV+OI, GP% beside GP+OI%) */
 .day-charts { display: grid; gap: 16px; margin-bottom: 20px; }
 .day-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
@@ -443,6 +446,9 @@ td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .day-wide thead th.wk { background: #dce6f7; color: #1f3a5f; }
 .day-wide thead th.wk .sub { color: #1f3a5f; font-weight: 600; }
 .day-wide td.wk { background: rgba(29, 78, 216, 0.06); }
+.day-wide thead th.sel { background: #1d4ed8; color: #fff; }
+.day-wide thead th.sel .sub { color: #fff; font-weight: 600; }
+.day-wide td.sel { background: rgba(29, 78, 216, 0.14); box-shadow: inset 2px 0 0 #1d4ed8, inset -2px 0 0 #1d4ed8; }
 .drill-group td { background: #eef3fa; }
 .sub { font-size: 11px; font-weight: 400; color: #526176; margin-top: 2px; }
 

@@ -9,8 +9,10 @@ export type DayPoint = { date: string; sply: string; now: number | null; prev: n
 
 /** One line per series, one point per day: this month (navy) against the same day last year (grey).
  *  Money is in crore, ratios in percent. Move the pointer anywhere over the chart to read that day's figures. */
-export default function DayLines({ title, kind, points, total }: {
+export default function DayLines({ title, kind, points, total, selected }: {
   title: string; kind: "money" | "pct"; points: DayPoint[]; total: { now: number | null; prev: number | null };
+  /** The day picked in the Period list, marked with a band. */
+  selected?: string;
 }) {
   const { show, hide, node } = useTooltip();
   const { ref, w } = useWidth(560);
@@ -88,6 +90,9 @@ export default function DayLines({ title, kind, points, total }: {
               <line x1={left} x2={w - right} y1={y(t)} y2={y(t)} className="ov-grid" />
               <text x={left - 8} y={y(t)} textAnchor="end" dominantBaseline="middle" fontSize={11} className="ov-col-name">{fmt(t)}</text>
             </g>
+          ))}
+          {points.map((p, i) => p.date === selected && (
+            <rect key={`sel-${p.date}`} x={x(i) - plotW / n / 2} y={top} width={plotW / n} height={plotH} fill="rgba(29, 78, 216, 0.12)" />
           ))}
           {hover != null && <line x1={x(hover)} x2={x(hover)} y1={top} y2={top + plotH} className="day-guide" />}
           <polyline points={line("prev")} fill="none" style={{ stroke: "var(--last)" }} strokeWidth={2} strokeLinejoin="round" />

@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { DailyData, DailyDetailData, DayFields, DetailRow } from "@/lib/types";
+import type { DailyData, DailyDetailData, DailyHead, DayFields, DetailRow } from "@/lib/types";
 import { full, growth, pct, signedFull, titleCase } from "@/lib/format";
 import { downloadExcel, ExportButton, type ExportCell, type ExportCol } from "@/lib/export";
 import {
-  Cell, Chg, dayLong, dayMonth, difference, diffChg, Figures, growthChg, ratiosOf, SortState, SortTh, sumFigures,
+  Cell, Chg, dayLong, dayMonth, difference, diffChg, Figures, growthChg, MTD, ratiosOf, SortState, SortTh, sumFigures, uniqSorted,
 } from "@/lib/daily";
 
 type Amounts = Pick<DayFields, "sales" | "splySales" | "gpv" | "splyGpv" | "valueAdj" | "splyValueAdj">;
@@ -16,7 +16,6 @@ type Sort = SortState<SortKey>;
 /** A row of the tree: a division, a head, a CRP or a category. Figures are summed over every row below it. */
 type Node = { id: string; level: number; name: string; figures: Figures; children: Node[] };
 
-const MTD = "mtd";
 const SEP = "\u001f";
 const GROUP_LABEL: Record<Group, string> = { all: "All stores", same: "Same stores" };
 const LEVEL_NAME: Record<number, string> = { 1: "Division", 2: "Head", 3: "CRP", 4: "Category level 3" };
@@ -103,22 +102,14 @@ function shownName(n: Node): string {
   return titleCase(n.name);
 }
 
-export default function DailyDetail({ daily, group }: { daily: DailyData; group: Group }) {
-  const [detail, setDetail] = useState<DailyDetailData | null>(null);
-  const [period, setPeriod] = useState<string>(MTD);
+/** The detail table. The period, store group, category head and CRP come from the filters at the top of the tab;
+ *  the category list here narrows it further. */
+export default function DailyDetail({ daily, group, detail, period, head, crp }: {
+  daily: DailyData; group: Group; detail: DailyDetailData | null; period: string; head: DailyHead | null; crp: string;
+}) {
   const [sort, setSort] = useState<Sort>({ key: "sales", dir: "desc" });
   const [open, setOpen] = useState<Set<string>>(new Set());
-  const [crp, setCrp] = useState("");
   const [cat, setCat] = useState("");
-
-  // the detail rows are a separate data file; load it only when this tab is opened
-  useEffect(() => {
-    let live = true;
-    import("@/data/daily-detail.json").then((m) => {
-      if (live) setDetail(m.default as unknown as DailyDetailData);
-    });
-    return () => { live = false; };
-  }, []);
 
   const idx = period === MTD ? daily.days.map((_, i) => i) : [daily.days.findIndex((d) => d.date === period)];
   const label = period === MTD ? `Month to date (${daily.periodLabel})` : dayLong(period);
@@ -143,61 +134,46 @@ export default function DailyDetail({ daily, group }: { daily: DailyData; group:
     <section aria-labelledby="detail-heading">
       <div className="ov-section-head"><h2 id="detail-heading">Detail by division, head, CRP and category</h2></div>
       <p className="ov-note">
-        {label}, {groupLabel}. Uses the store group selected above; the category head filter does not apply here.
+        {label}, {groupLabel}. Follows the period, store group, category head and CRP chosen at the top.
         Click + to open a division, then its heads, the CRPs under each head, and their categories.
-        Pick a CRP or a category to filter the table.
+        Pick a category to filter the table further.
       </p>
       {!detail ? (
         <p className="hint">Loading the detail…</p>
       ) : (
         <DetailTable
           daily={daily} detail={detail} group={group} idx={idx} label={label} compare={compare} groupLabel={groupLabel}
-          period={period} setPeriod={setPeriod} sort={sort} onSort={onSort} open={open} toggle={toggle} setOpen={setOpen}
-          crp={crp} cat={cat} setCrp={setCrp} setCat={setCat}
+          head={head} crp={crp} sort={sort} onSort={onSort} open={open} toggle={toggle} setOpen={setOpen} cat={cat} setCat={setCat}
         />
       )}
     </section>
   );
 }
 
-function DetailTable({ daily, detail, group, idx, label, compare, groupLabel, period, setPeriod, sort, onSort, open, toggle, setOpen, crp, cat, setCrp, setCat }: {
+function DetailTable({ daily, detail, group, idx, label, compare, groupLabel, head, crp, sort, onSort, open, toggle, setOpen, cat, setCat }: {
   daily: DailyData; detail: DailyDetailData; group: Group; idx: number[]; label: string; compare: string; groupLabel: string;
-  period: string; setPeriod: (p: string) => void; sort: Sort; onSort: (k: SortKey) => void;
-  open: Set<string>; toggle: (id: string) => void; setOpen: (s: Set<string>) => void;
-  crp: string; cat: string; setCrp: (c: string) => void; setCat: (c: string) => void;
+  head: DailyHead | null; crp: string; sort: Sort; onSort: (k: SortKey) => void;
+  open: Set<string>; toggle: (id: string) => void; setOpen: (s: Set<string>) => void; cat: string; setCat: (c: string) => void;
 }) {
-  const allRows = detail.groups[group];
-  // a choice that does not exist in this store group is ignored
-  const crpSel = crp && allRows.some((r) => r.crp === crp) ? crp : "";
-  const catSel = cat && allRows.some((r) => r.category === cat) ? cat : "";
-  const matches = (r: DetailRow, c: string, k: string) => (!c || r.crp === c) && (!k || r.category === k);
-  const options = (pick: (r: DetailRow) => string | null, c: string, k: string) =>
-    [...new Set(allRows.filter((r) => matches(r, c, k)).map(pick).filter((v): v is string => v != null))].sort((a, b) => a.localeCompare(b));
-  // each list offers only what exists with the other choice applied, so a choice never gives an empty table
-  const crpOptions = options((r) => r.crp, "", catSel);
-  const catOptions = options((r) => r.category, crpSel, "");
-  const filtered = Boolean(crpSel || catSel);
-  const change = (which: "crp" | "cat", value: string) => {
-    let c = which === "crp" ? value : crpSel;
-    let k = which === "cat" ? value : catSel;
-    // if nothing matches both choices, the other one is cleared
-    if (c && k && !allRows.some((r) => r.crp === c && r.category === k)) {
-      if (which === "crp") k = "";
-      else c = "";
-    }
-    setCrp(c);
-    setCat(k);
-    // with a choice made, every level is opened so the matching rows can be seen
-    setOpen(new Set(c || k ? parentIds(buildTree(allRows.filter((r) => matches(r, c, k)), idx)) : []));
-  };
-  const clearFilters = () => {
-    setCrp("");
-    setCat("");
-    setOpen(new Set());
-  };
-  const tree = buildTree(allRows.filter((r) => matches(r, crpSel, catSel)), idx);
+  // the rows for the head and CRP chosen at the top; the category list offers what exists among them
+  const baseRows = detail.groups[group].filter(
+    (r) => (!head || (r.division === head.division && r.head === head.head)) && (!crp || r.crp === crp),
+  );
+  const catOptions = uniqSorted(baseRows.map((r) => r.category));
+  const catSel = cat && catOptions.includes(cat) ? cat : "";
+  const rows = catSel ? baseRows.filter((r) => r.category === catSel) : baseRows;
+  const filtered = Boolean(head || crp || catSel);
+  const tree = buildTree(rows, idx);
   const shown = flatten(tree, sort, open, 0, false);
   const everything = flatten(tree, sort, open, 0, true);
+  const allParents = parentIds(tree);
+
+  // with any filter on, every level is opened so the matching rows can be seen; with none, the table starts closed
+  const filterKey = `${group}|${head ? head.division + head.head : ""}|${crp}|${catSel}`;
+  useEffect(() => {
+    setOpen(new Set(filtered ? allParents : []));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterKey]);
 
   // the day-wise total and what the rows add up to; the difference is in the workbook total with no row
   const dayTotal = periodFigures(daily.groups[group].total, idx);
@@ -240,30 +216,16 @@ function DetailTable({ daily, detail, group, idx, label, compare, groupLabel, pe
     downloadExcel(`day-wise-detail-${group}${filtered ? "-filtered" : ""}.xlsx`, "Day wise detail", cols, body);
   };
 
-  const allParents = parentIds(tree);
-
   return (
     <>
       <div className="drill-filters">
-        <label>Period
-          <select value={period} onChange={(e) => setPeriod(e.target.value)} aria-label="Period">
-            <option value={MTD}>Month to date ({daily.periodLabel})</option>
-            {[...daily.days].reverse().map((d) => <option key={d.date} value={d.date}>{dayLong(d.date)}</option>)}
-          </select>
-        </label>
-        <label>CRP
-          <select value={crpSel} onChange={(e) => change("crp", e.target.value)} aria-label="CRP">
-            <option value="">All CRPs</option>
-            {crpOptions.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </label>
         <label>Category
-          <select value={catSel} onChange={(e) => change("cat", e.target.value)} aria-label="Category">
+          <select value={catSel} onChange={(e) => setCat(e.target.value)} aria-label="Category">
             <option value="">All categories</option>
             {catOptions.map((c) => <option key={c} value={c}>{c === "0" ? "(not set)" : titleCase(c)}</option>)}
           </select>
         </label>
-        {filtered && <button type="button" className="exportbtn" onClick={clearFilters}>Clear filters</button>}
+        {catSel && <button type="button" className="exportbtn" onClick={() => setCat("")}>Clear category</button>}
       </div>
       <div className="xbar">
         <button type="button" className="exportbtn" onClick={() => setOpen(new Set(allParents))}>Expand all</button>
