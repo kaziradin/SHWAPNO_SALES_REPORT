@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from "react";
 import type { DailyData, DailyDetailData, DailyHead, DayFields } from "@/lib/types";
-import { abbrOf, arrowOf, crFmt, crOrDash, crSigned, full, growth, pct, roleName, signedPct, toneOfNum } from "@/lib/format";
+import { abbrOf, arrowOf, crFmt, crOrDash, crSigned, full, growth, pct, roleName, signedPct, titleCase, toneOfNum } from "@/lib/format";
 import { downloadExcel, ExportButton, type ExportCell, type ExportCol } from "@/lib/export";
 import {
   Cell, dayFieldsOfRows, dayLong, dayMonth, dayWeekday, difference, diffChg, Figures, growthChg, isFriSat, MTD, Ratios, ratiosOf,
-  sumFigures, uniqSorted,
+  SHOWN_DIVISIONS, sumFigures, uniqSorted,
 } from "@/lib/daily";
 import DailyDetail from "./DailyDetail";
 import DayLines, { type DayPoint } from "./DayLines";
@@ -68,9 +68,11 @@ export default function Daily({ daily }: { daily: DailyData }) {
   const [group, setGroup] = useState<Group>("all");
   const [head, setHead] = useState<string>(TOTAL);
   const [crp, setCrp] = useState("");
+  const [cat, setCat] = useState("");
   const [detail, setDetail] = useState<DailyDetailData | null>(null);
 
-  // the detail rows are a separate data file; they give the CRP list, the figures for a CRP, and the detail table
+  // the detail rows are a separate data file; they give the CRP and category lists, the figures when either is chosen,
+  // and the detail table
   useEffect(() => {
     let live = true;
     import("@/data/daily-detail.json").then((m) => {
@@ -82,26 +84,37 @@ export default function Daily({ daily }: { daily: DailyData }) {
   const g = daily.groups[group];
   const picked = g.heads.find((h) => headKey(h) === head);
   const headSel: DailyHead | null = head === TOTAL || !picked ? null : picked;
-  const detailRows = detail?.groups[group] ?? [];
-  const rowsOfHead = (h: DailyHead | null) => (h ? detailRows.filter((r) => r.division === h.division && r.head === h.head) : detailRows);
-  // a CRP belongs to a head, so the list follows the head choice; a choice that no longer fits is ignored
-  const crpOptions = uniqSorted(rowsOfHead(headSel).map((r) => r.crp));
-  const crpSel = crp && crpOptions.includes(crp) ? crp : "";
-  const source: DayFields = crpSel
-    ? dayFieldsOfRows(rowsOfHead(headSel).filter((r) => r.crp === crpSel), daily.days.length)
+  // detail rows of the listed divisions, for the CRP and category lists and for the figures when either is chosen
+  const listedRows = (rs: DailyDetailData["groups"]["all"] | undefined) => (rs ?? []).filter((r) => SHOWN_DIVISIONS.includes(r.division));
+  const rowsOfHead = (h: DailyHead | null, rs = listedRows(detail?.groups[group])) =>
+    (h ? rs.filter((r) => r.division === h.division && r.head === h.head) : rs);
+  const headRows = rowsOfHead(headSel);
+  // a CRP belongs to a head and the CRP and category lists narrow each other, so a choice always has rows behind it;
+  // one that no longer fits is ignored
+  const crpSel = crp && headRows.some((r) => r.crp === crp) ? crp : "";
+  const catSel = cat && headRows.some((r) => r.category === cat && (!crpSel || r.crp === crpSel)) ? cat : "";
+  const crpOptions = uniqSorted(headRows.filter((r) => !catSel || r.category === catSel).map((r) => r.crp));
+  const catOptions = uniqSorted(headRows.filter((r) => !crpSel || r.crp === crpSel).map((r) => r.category));
+  // with a CRP or category chosen the figures are the sum of the matching detail rows, which have no footfall
+  const fromRows = Boolean(crpSel || catSel);
+  const source: DayFields = fromRows
+    ? dayFieldsOfRows(headRows.filter((r) => (!crpSel || r.crp === crpSel) && (!catSel || r.category === catSel)), daily.days.length)
     : headSel ?? g.total;
   const headText = headSel ? headLabel(headSel) : "All category heads";
-  const selectionLabel = crpSel ? `${headText}, CRP ${crpSel}` : headText;
-  const metrics = crpSel ? METRICS.filter((m) => !m.footfall) : METRICS;
+  const selectionLabel = [headText, crpSel && `CRP ${crpSel}`, catSel && `category ${titleCase(catSel)}`].filter(Boolean).join(", ");
+  const metrics = fromRows ? METRICS.filter((m) => !m.footfall) : METRICS;
 
   const onHead = (v: string) => {
     setHead(v);
-    const h = g.heads.find((x) => headKey(x) === v) ?? null;
-    if (crpSel && !rowsOfHead(h).some((r) => r.crp === crpSel)) setCrp("");
+    const rs = rowsOfHead(g.heads.find((x) => headKey(x) === v) ?? null);
+    if (crpSel && !rs.some((r) => r.crp === crpSel)) setCrp("");
+    if (catSel && !rs.some((r) => r.category === catSel)) setCat("");
   };
   const onGroup = (v: Group) => {
     setGroup(v);
-    if (crpSel && !(detail?.groups[v] ?? []).some((r) => r.crp === crpSel)) setCrp("");
+    const rs = listedRows(detail?.groups[v]);
+    if (crpSel && !rs.some((r) => r.crp === crpSel)) setCrp("");
+    if (catSel && !rs.some((r) => r.category === catSel)) setCat("");
   };
 
   const rows: DayRow[] = daily.days.map((d, i) => {
@@ -190,6 +203,12 @@ export default function Daily({ daily }: { daily: DailyData }) {
             {crpOptions.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </label>
+        <label>Category
+          <select value={catSel} onChange={(e) => setCat(e.target.value)} aria-label="Category" disabled={!detail}>
+            <option value="">{detail ? "All categories" : "Loading…"}</option>
+            {catOptions.map((c) => <option key={c} value={c}>{c === "0" ? "(not set)" : titleCase(c)}</option>)}
+          </select>
+        </label>
       </div>
 
       <section className="ov-kpis five" aria-label="Day wise sales key figures">
@@ -204,7 +223,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
       </section>
       <p className="ov-note">
         {selectionLabel}, {GROUP_LABEL[group].toLowerCase()}, {periodText}. Each day is compared with the same day last year.
-        {crpSel && " Footfall and basket are hidden for a single CRP: a bill with items from several categories would be counted more than once."}
+        {fromRows && " Footfall and basket are hidden when a CRP or category is chosen: a bill with items from several categories would be counted more than once."}
       </p>
 
       <div className="day-charts">
@@ -263,7 +282,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
         </div>
       </div>
 
-      <DailyDetail daily={daily} group={group} detail={detail} period={period} head={headSel} crp={crpSel} />
+      <DailyDetail daily={daily} group={group} detail={detail} period={period} head={headSel} crp={crpSel} cat={catSel} />
     </div>
   );
 }

@@ -422,7 +422,9 @@ td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .drill-filters select { min-width: 240px; }
 
 /* Day wise sales main filters: Period, Store group, Category head and CRP share one row on a desktop screen */
-.day-filters select { min-width: 190px; max-width: 100%; }
+.day-filters { column-gap: 14px; }
+.day-filters select { min-width: 150px; max-width: 230px; }
+.day-filters label:nth-child(3) select { max-width: 320px; }
 
 /* Day wise sales: sales full width, then the ratios in pairs (GPV beside GPV+OI, GP% beside GP+OI%) */
 .day-charts { display: grid; gap: 16px; margin-bottom: 20px; }

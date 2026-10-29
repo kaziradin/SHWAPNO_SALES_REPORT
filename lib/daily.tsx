@@ -4,6 +4,9 @@ import type { DayFields, DetailRow } from "@/lib/types";
 /** The Period choice that covers every day of the month so far. */
 export const MTD = "mtd";
 
+/** The divisions the detail table lists, in this order. The others are left out; the grand total still includes them. */
+export const SHOWN_DIVISIONS = ["COMPANY GOODS", "PACKED COMMODITY", "LOOSE COMMODITY", "FRESH PRODUCE", "GENERAL MERCHANDISE", "LIFESTYLE"];
+
 /** The distinct names in a list, without blanks, in alphabetical order. */
 export const uniqSorted = (values: (string | null)[]) =>
   [...new Set(values.filter((v): v is string => v != null))].sort((a, b) => a.localeCompare(b));

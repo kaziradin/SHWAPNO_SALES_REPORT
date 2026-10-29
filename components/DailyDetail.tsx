@@ -5,7 +5,7 @@ import type { DailyData, DailyDetailData, DailyHead, DayFields, DetailRow } from
 import { crOrDash, growth, pct, titleCase } from "@/lib/format";
 import { downloadExcel, ExportButton, type ExportCell, type ExportCol } from "@/lib/export";
 import {
-  Cell, dayLong, dayMonth, difference, diffChg, Figures, growthChg, MTD, ratiosOf, SortState, SortTh, sumFigures, uniqSorted,
+  Cell, dayLong, dayMonth, difference, diffChg, Figures, growthChg, MTD, ratiosOf, SHOWN_DIVISIONS, SortState, SortTh, sumFigures,
 } from "@/lib/daily";
 
 type Amounts = Pick<DayFields, "sales" | "splySales" | "gpv" | "splyGpv" | "valueAdj" | "splyValueAdj">;
@@ -19,8 +19,6 @@ type Node = { id: string; level: number; name: string; figures: Figures; childre
 const SEP = "\u001f";
 const GROUP_LABEL: Record<Group, string> = { all: "All stores", same: "Same stores" };
 const LEVEL_NAME: Record<number, string> = { 1: "Division", 2: "Head", 3: "CRP", 4: "Category level 3" };
-/** The divisions the table lists, in this order. The others are left out; the grand total still includes them. */
-const SHOWN_DIVISIONS = ["COMPANY GOODS", "PACKED COMMODITY", "LOOSE COMMODITY", "FRESH PRODUCE", "GENERAL MERCHANDISE", "LIFESTYLE"];
 
 /** Figures for the chosen days, summed from the money fields. GPV+OI is GPV plus value adj, as in the workbook. */
 function periodFigures(a: Amounts, idx: number[]): Figures {
@@ -106,14 +104,12 @@ function shownName(n: Node): string {
   return titleCase(n.name);
 }
 
-/** The detail table. The period, store group, category head and CRP come from the filters at the top of the tab;
- *  the category list here narrows it further. */
-export default function DailyDetail({ daily, group, detail, period, head, crp }: {
-  daily: DailyData; group: Group; detail: DailyDetailData | null; period: string; head: DailyHead | null; crp: string;
+/** The detail table. The period, store group, category head, CRP and category come from the filters at the top of the tab. */
+export default function DailyDetail({ daily, group, detail, period, head, crp, cat }: {
+  daily: DailyData; group: Group; detail: DailyDetailData | null; period: string; head: DailyHead | null; crp: string; cat: string;
 }) {
   const [sort, setSort] = useState<Sort>({ key: "sales", dir: "desc" });
   const [open, setOpen] = useState<Set<string>>(new Set());
-  const [cat, setCat] = useState("");
 
   const idx = period === MTD ? daily.days.map((_, i) => i) : [daily.days.findIndex((d) => d.date === period)];
   const label = period === MTD ? `Month to date (${daily.periodLabel})` : dayLong(period);
@@ -138,42 +134,41 @@ export default function DailyDetail({ daily, group, detail, period, head, crp }:
     <section aria-labelledby="detail-heading">
       <div className="ov-section-head"><h2 id="detail-heading">Detail by division, head, CRP and category</h2></div>
       <p className="ov-note">
-        {label}, {groupLabel}. Follows the period, store group, category head and CRP chosen at the top.
+        {label}, {groupLabel}. Follows the period, store group, category head, CRP and category chosen at the top.
         Click + to open a division, then its heads, the CRPs under each head, and their categories.
-        Pick a category to filter the table further.
       </p>
       {!detail ? (
         <p className="hint">Loading the detail…</p>
       ) : (
         <DetailTable
           daily={daily} detail={detail} group={group} idx={idx} label={label} compare={compare} groupLabel={groupLabel}
-          head={head} crp={crp} sort={sort} onSort={onSort} open={open} toggle={toggle} setOpen={setOpen} cat={cat} setCat={setCat}
+          head={head} crp={crp} cat={cat} sort={sort} onSort={onSort} open={open} toggle={toggle} setOpen={setOpen}
         />
       )}
     </section>
   );
 }
 
-function DetailTable({ daily, detail, group, idx, label, compare, groupLabel, head, crp, sort, onSort, open, toggle, setOpen, cat, setCat }: {
+function DetailTable({ daily, detail, group, idx, label, compare, groupLabel, head, crp, cat, sort, onSort, open, toggle, setOpen }: {
   daily: DailyData; detail: DailyDetailData; group: Group; idx: number[]; label: string; compare: string; groupLabel: string;
-  head: DailyHead | null; crp: string; sort: Sort; onSort: (k: SortKey) => void;
-  open: Set<string>; toggle: (id: string) => void; setOpen: (s: Set<string>) => void; cat: string; setCat: (c: string) => void;
+  head: DailyHead | null; crp: string; cat: string; sort: Sort; onSort: (k: SortKey) => void;
+  open: Set<string>; toggle: (id: string) => void; setOpen: (s: Set<string>) => void;
 }) {
-  // the rows for the head and CRP chosen at the top; the category list offers what exists among them
-  const baseRows = detail.groups[group].filter(
-    (r) => SHOWN_DIVISIONS.includes(r.division) && (!head || (r.division === head.division && r.head === head.head)) && (!crp || r.crp === crp),
+  // the listed divisions' rows for the head, CRP and category chosen at the top
+  const rows = detail.groups[group].filter(
+    (r) => SHOWN_DIVISIONS.includes(r.division)
+      && (!head || (r.division === head.division && r.head === head.head))
+      && (!crp || r.crp === crp)
+      && (!cat || r.category === cat),
   );
-  const catOptions = uniqSorted(baseRows.map((r) => r.category));
-  const catSel = cat && catOptions.includes(cat) ? cat : "";
-  const rows = catSel ? baseRows.filter((r) => r.category === catSel) : baseRows;
-  const filtered = Boolean(head || crp || catSel);
+  const filtered = Boolean(head || crp || cat);
   const tree = buildTree(rows, idx);
   const shown = flatten(tree, sort, open, 0, false);
   const everything = flatten(tree, sort, open, 0, true);
   const allParents = parentIds(tree);
 
   // with any filter on, every level is opened so the matching rows can be seen; with none, the table starts closed
-  const filterKey = `${group}|${head ? head.division + head.head : ""}|${crp}|${catSel}`;
+  const filterKey = `${group}|${head ? head.division + head.head : ""}|${crp}|${cat}`;
   useEffect(() => {
     setOpen(new Set(filtered ? allParents : []));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -214,15 +209,6 @@ function DetailTable({ daily, detail, group, idx, label, compare, groupLabel, he
 
   return (
     <>
-      <div className="drill-filters">
-        <label>Category
-          <select value={catSel} onChange={(e) => setCat(e.target.value)} aria-label="Category">
-            <option value="">All categories</option>
-            {catOptions.map((c) => <option key={c} value={c}>{c === "0" ? "(not set)" : titleCase(c)}</option>)}
-          </select>
-        </label>
-        {catSel && <button type="button" className="exportbtn" onClick={() => setCat("")}>Clear category</button>}
-      </div>
       <div className="xbar">
         <button type="button" className="exportbtn" onClick={() => setOpen(new Set(allParents))}>Expand all</button>
         <button type="button" className="exportbtn" onClick={() => setOpen(new Set())}>Collapse all</button>
