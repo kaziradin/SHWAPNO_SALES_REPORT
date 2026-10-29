@@ -108,6 +108,8 @@ export default function DailyDetail({ daily, group }: { daily: DailyData; group:
   const [period, setPeriod] = useState<string>(MTD);
   const [sort, setSort] = useState<Sort>({ key: "sales", dir: "desc" });
   const [open, setOpen] = useState<Set<string>>(new Set());
+  const [crp, setCrp] = useState("");
+  const [cat, setCat] = useState("");
 
   // the detail rows are a separate data file; load it only when this tab is opened
   useEffect(() => {
@@ -138,6 +140,7 @@ export default function DailyDetail({ daily, group }: { daily: DailyData; group:
       <p className="ov-note">
         {label}, {groupLabel}. Uses the store group selected above; the category head filter does not apply here.
         Click + to open a division, then its heads, the CRPs under each head, and their categories.
+        Pick a CRP or a category to filter the table.
       </p>
       {!detail ? (
         <p className="hint">Loading the detail…</p>
@@ -145,18 +148,49 @@ export default function DailyDetail({ daily, group }: { daily: DailyData; group:
         <DetailTable
           daily={daily} detail={detail} group={group} idx={idx} label={label} groupLabel={groupLabel}
           period={period} setPeriod={setPeriod} sort={sort} onSort={onSort} open={open} toggle={toggle} setOpen={setOpen}
+          crp={crp} cat={cat} setCrp={setCrp} setCat={setCat}
         />
       )}
     </section>
   );
 }
 
-function DetailTable({ daily, detail, group, idx, label, groupLabel, period, setPeriod, sort, onSort, open, toggle, setOpen }: {
+function DetailTable({ daily, detail, group, idx, label, groupLabel, period, setPeriod, sort, onSort, open, toggle, setOpen, crp, cat, setCrp, setCat }: {
   daily: DailyData; detail: DailyDetailData; group: Group; idx: number[]; label: string; groupLabel: string;
   period: string; setPeriod: (p: string) => void; sort: Sort; onSort: (k: SortKey) => void;
   open: Set<string>; toggle: (id: string) => void; setOpen: (s: Set<string>) => void;
+  crp: string; cat: string; setCrp: (c: string) => void; setCat: (c: string) => void;
 }) {
-  const tree = buildTree(detail.groups[group], idx);
+  const allRows = detail.groups[group];
+  // a choice that does not exist in this store group is ignored
+  const crpSel = crp && allRows.some((r) => r.crp === crp) ? crp : "";
+  const catSel = cat && allRows.some((r) => r.category === cat) ? cat : "";
+  const matches = (r: DetailRow, c: string, k: string) => (!c || r.crp === c) && (!k || r.category === k);
+  const options = (pick: (r: DetailRow) => string | null, c: string, k: string) =>
+    [...new Set(allRows.filter((r) => matches(r, c, k)).map(pick).filter((v): v is string => v != null))].sort((a, b) => a.localeCompare(b));
+  // each list offers only what exists with the other choice applied, so a choice never gives an empty table
+  const crpOptions = options((r) => r.crp, "", catSel);
+  const catOptions = options((r) => r.category, crpSel, "");
+  const filtered = Boolean(crpSel || catSel);
+  const change = (which: "crp" | "cat", value: string) => {
+    let c = which === "crp" ? value : crpSel;
+    let k = which === "cat" ? value : catSel;
+    // if nothing matches both choices, the other one is cleared
+    if (c && k && !allRows.some((r) => r.crp === c && r.category === k)) {
+      if (which === "crp") k = "";
+      else c = "";
+    }
+    setCrp(c);
+    setCat(k);
+    // with a choice made, every level is opened so the matching rows can be seen
+    setOpen(new Set(c || k ? parentIds(buildTree(allRows.filter((r) => matches(r, c, k)), idx)) : []));
+  };
+  const clearFilters = () => {
+    setCrp("");
+    setCat("");
+    setOpen(new Set());
+  };
+  const tree = buildTree(allRows.filter((r) => matches(r, crpSel, catSel)), idx);
   const shown = flatten(tree, sort, open, 0, false);
   const everything = flatten(tree, sort, open, 0, true);
 
@@ -169,6 +203,7 @@ function DetailTable({ daily, detail, group, idx, label, groupLabel, period, set
     gpvOi: difference(dayTotal.gpvOi, rowsTotal.gpvOi),
   };
   const dayX = ratiosOf(dayTotal);
+  const rowsX = ratiosOf(rowsTotal);
 
   const exportDetail = () => {
     const cols: ExportCol[] = [
@@ -189,12 +224,15 @@ function DetailTable({ daily, detail, group, idx, label, groupLabel, period, set
         x.goi, x.splyGoi, difference(x.goi, x.splyGoi),
       ];
     };
-    const body: ExportCell[][] = [
-      ...everything.map(({ node }) => [LEVEL_NAME[node.level], shownName(node), ...cells(node.figures)]),
-      ["", "Not in any row (workbook total minus rows)", unsplit.sales, null, null, unsplit.gpv, null, null, null, null, null, unsplit.gpvOi, null, null, null, null, null],
-      ["", "Total", ...cells(dayTotal)],
-    ];
-    downloadExcel(`day-wise-detail-${group}.xlsx`, "Day wise detail", cols, body);
+    const rowsOut: ExportCell[][] = everything.map(({ node }) => [LEVEL_NAME[node.level], shownName(node), ...cells(node.figures)]);
+    const body: ExportCell[][] = filtered
+      ? [...rowsOut, ["", "Total (filtered rows)", ...cells(rowsTotal)]]
+      : [
+          ...rowsOut,
+          ["", "Not in any row (workbook total minus rows)", unsplit.sales, null, null, unsplit.gpv, null, null, null, null, null, unsplit.gpvOi, null, null, null, null, null],
+          ["", "Total", ...cells(dayTotal)],
+        ];
+    downloadExcel(`day-wise-detail-${group}${filtered ? "-filtered" : ""}.xlsx`, "Day wise detail", cols, body);
   };
 
   const allParents = parentIds(tree);
@@ -208,6 +246,19 @@ function DetailTable({ daily, detail, group, idx, label, groupLabel, period, set
             {[...daily.days].reverse().map((d) => <option key={d.date} value={d.date}>{dayLong(d.date)}</option>)}
           </select>
         </label>
+        <label>CRP
+          <select value={crpSel} onChange={(e) => change("crp", e.target.value)} aria-label="CRP">
+            <option value="">All CRPs</option>
+            {crpOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </label>
+        <label>Category
+          <select value={catSel} onChange={(e) => change("cat", e.target.value)} aria-label="Category">
+            <option value="">All categories</option>
+            {catOptions.map((c) => <option key={c} value={c}>{c === "0" ? "(not set)" : titleCase(c)}</option>)}
+          </select>
+        </label>
+        {filtered && <button type="button" className="exportbtn" onClick={clearFilters}>Clear filters</button>}
       </div>
       <div className="xbar">
         <button type="button" className="exportbtn" onClick={() => setOpen(new Set(allParents))}>Expand all</button>
@@ -218,7 +269,7 @@ function DetailTable({ daily, detail, group, idx, label, groupLabel, period, set
         <div className="ov-table-scroll">
           <table className="ov-table">
             <caption>
-              {label}, {groupLabel}. Click a heading to sort within each level.
+              {label}, {groupLabel}{filtered ? ", filtered" : ""}. Click a heading to sort within each level.
             </caption>
             <thead>
               <tr>
@@ -253,7 +304,19 @@ function DetailTable({ daily, detail, group, idx, label, groupLabel, period, set
                 );
               })}
             </tbody>
-            {tree.length > 0 && (
+            {tree.length > 0 && filtered && (
+              <tfoot>
+                <tr>
+                  <th scope="row" style={{ textAlign: "left" }}>Total (filtered rows)</th>
+                  <Cell value={full(rowsTotal.sales)} chg={growthChg(rowsTotal.sales, rowsTotal.splySales)} />
+                  <Cell value={full(rowsTotal.gpv)} chg={growthChg(rowsTotal.gpv, rowsTotal.splyGpv)} />
+                  <Cell value={pct(rowsX.gp, 2)} chg={diffChg(rowsX.gp, rowsX.splyGp)} />
+                  <Cell value={full(rowsTotal.gpvOi)} chg={growthChg(rowsTotal.gpvOi, rowsTotal.splyGpvOi)} />
+                  <Cell value={pct(rowsX.goi, 2)} chg={diffChg(rowsX.goi, rowsX.splyGoi)} />
+                </tr>
+              </tfoot>
+            )}
+            {tree.length > 0 && !filtered && (
               <tfoot>
                 <tr>
                   <th scope="row" style={{ textAlign: "left" }}>Not in any row (workbook total minus rows)</th>
