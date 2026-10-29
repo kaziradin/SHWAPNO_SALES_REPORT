@@ -3,12 +3,12 @@
 import { useState } from "react";
 import type { DailyData, DayFields } from "@/lib/types";
 import { abbrOf, arrowOf, crFmt, crSigned, full, growth, pct, roleName, signedPct, toneOfNum } from "@/lib/format";
-import { useTooltip, useWidth, type TipRow } from "./charts";
 import { downloadExcel, ExportButton, type ExportCell, type ExportCol } from "@/lib/export";
 import {
-  Cell, dayLong, dayNum, dayShort, difference, diffChg, Figures, growthChg, Ratios, ratiosOf, SortState, SortTh, sumFigures,
+  Cell, dayLong, dayShort, difference, diffChg, Figures, growthChg, Ratios, ratiosOf, SortState, SortTh, sumFigures,
 } from "@/lib/daily";
 import DailyDetail from "./DailyDetail";
+import DayLines, { type DayPoint } from "./DayLines";
 
 type Group = "all" | "same";
 const GROUP_LABEL: Record<Group, string> = { all: "All stores", same: "Same stores" };
@@ -35,6 +35,13 @@ function dayFigures(f: DayFields, i: number): Figures {
 
 const headKey = (h: { division: string; role: string; head: string }) => `${h.division}|${h.role}|${h.head}`;
 const headLabel = (h: { division: string; role: string; head: string }) => `${abbrOf(h.division)} - ${roleName(h.role)} - ${h.head}`;
+
+/** One chart's points: this month and the same day last year for each day. */
+const seriesOf = (rows: DayRow[], pick: (r: DayRow) => [number | null, number | null]): DayPoint[] =>
+  rows.map((r) => {
+    const [now, prev] = pick(r);
+    return { date: r.date, sply: r.sply, now, prev };
+  });
 
 export default function Daily({ daily }: { daily: DailyData }) {
   const [group, setGroup] = useState<Group>("all");
@@ -135,19 +142,19 @@ export default function Daily({ daily }: { daily: DailyData }) {
       </p>
 
       <div className="day-charts">
-        <DayLines rows={rows} kind="money" title="Day wise sales" sub="crore; navy this month, grey same day last year"
-          pick={(r) => [r.f.sales, r.f.splySales]} />
+        <DayLines title="Day wise sales" kind="money" points={seriesOf(rows, (r) => [r.f.sales, r.f.splySales])}
+          total={{ now: total.sales, prev: total.splySales }} />
         <div className="day-pair">
-          <DayLines rows={rows} kind="money" title="Day wise GPV" sub="crore; navy this month, grey same day last year"
-            pick={(r) => [r.f.gpv, r.f.splyGpv]} />
-          <DayLines rows={rows} kind="money" title="Day wise GPV+OI" sub="crore; navy this month, grey same day last year"
-            pick={(r) => [r.f.gpvOi, r.f.splyGpvOi]} />
+          <DayLines title="Day wise GPV" kind="money" points={seriesOf(rows, (r) => [r.f.gpv, r.f.splyGpv])}
+            total={{ now: total.gpv, prev: total.splyGpv }} />
+          <DayLines title="Day wise GPV+OI" kind="money" points={seriesOf(rows, (r) => [r.f.gpvOi, r.f.splyGpvOi])}
+            total={{ now: total.gpvOi, prev: total.splyGpvOi }} />
         </div>
         <div className="day-pair">
-          <DayLines rows={rows} kind="pct" title="Day wise GP%" sub="navy this month, grey same day last year"
-            pick={(r) => [r.x.gp, r.x.splyGp]} />
-          <DayLines rows={rows} kind="pct" title="Day wise GP+OI%" sub="navy this month, grey same day last year"
-            pick={(r) => [r.x.goi, r.x.splyGoi]} />
+          <DayLines title="Day wise GP%" kind="pct" points={seriesOf(rows, (r) => [r.x.gp, r.x.splyGp])}
+            total={{ now: totalX.gp, prev: totalX.splyGp }} />
+          <DayLines title="Day wise GP+OI%" kind="pct" points={seriesOf(rows, (r) => [r.x.goi, r.x.splyGoi])}
+            total={{ now: totalX.goi, prev: totalX.splyGoi }} />
         </div>
       </div>
 
@@ -222,75 +229,4 @@ function sortValue(r: DayRow, key: SortKey): number | string {
     case "ff": return r.f.ff ?? 0;
     case "bs": return r.x.bs ?? 0;
   }
-}
-
-/** One line per series, one point per day: this month (navy) against the same day last year (grey).
- *  Money is labelled in crore, ratios in percent to two decimals. Hover shows the day's figures. */
-function DayLines({ rows, title, sub, kind, pick }: {
-  rows: DayRow[]; title: string; sub: string; kind: "money" | "pct"; pick: (r: DayRow) => [number | null, number | null];
-}) {
-  const { show, hide, node } = useTooltip();
-  const { ref, w } = useWidth(560);
-  const H = 240, top = 14, bottom = 26, left = 66, right = 14;
-  const fmt = (v: number) => (kind === "money" ? crFmt(v) : pct(v, 2));
-  const pts = rows.map(pick);
-  const values = pts.flatMap(([a, b]) => [a, b]).filter((v): v is number => v != null);
-  const lo0 = values.length ? Math.min(...values) : 0;
-  const hi0 = values.length ? Math.max(...values) : 1;
-  const padding = (hi0 - lo0) * 0.08 || Math.abs(hi0) * 0.01 || 1;
-  const lo = lo0 - padding, hi = hi0 + padding;
-  const plotW = Math.max(40, w - left - right), plotH = H - top - bottom;
-  const n = Math.max(1, rows.length);
-  const x = (i: number) => left + (plotW * (i + 0.5)) / n;
-  const y = (v: number) => top + ((hi - v) / (hi - lo)) * plotH;
-  const line = (side: 0 | 1) =>
-    pts.map(([a, b], i) => { const v = side === 0 ? a : b; return v == null ? null : `${x(i)},${y(v)}`; }).filter(Boolean).join(" ");
-  // label every day when there is room, otherwise every second, third... day; the last day is always labelled
-  const step = Math.max(1, Math.ceil(n / Math.max(1, Math.floor(plotW / 24))));
-  const lastIdx = rows.length - 1;
-  const lastNow = lastIdx >= 0 ? pts[lastIdx][0] : null;
-  const ticks = [hi0, (hi0 + lo0) / 2, lo0];
-  return (
-    <div className="ov-panel">
-      <h3>{title}<small>{sub}</small></h3>
-      <div ref={ref}>
-        <svg width={w} height={H} viewBox={`0 0 ${w} ${H}`} role="img" aria-label={`${title}: this month against the same day last year`}>
-          {ticks.map((t, k) => (
-            <g key={k}>
-              <line x1={left} x2={w - right} y1={y(t)} y2={y(t)} className="ov-grid" />
-              <text x={left - 8} y={y(t)} textAnchor="end" dominantBaseline="middle" fontSize={11} className="ov-col-name">{fmt(t)}</text>
-            </g>
-          ))}
-          <polyline points={line(1)} fill="none" style={{ stroke: "var(--last)" }} strokeWidth={2} strokeLinejoin="round" />
-          <polyline points={line(0)} fill="none" style={{ stroke: "var(--this)" }} strokeWidth={2.5} strokeLinejoin="round" />
-          {rows.map((r, i) => {
-            const [now, prev] = pts[i];
-            const d = difference(now, prev);
-            const tip: TipRow[] = [
-              ["This day", now == null ? "–" : fmt(now)],
-              ["Same day last year", prev == null ? "–" : fmt(prev)],
-              ["Difference", d == null ? "–" : kind === "money" ? crSigned(d) : signedPct(d, 2)],
-            ];
-            if (kind === "money") tip.push(["Change", signedPct(growth(now, prev), 2)]);
-            return (
-              <g key={r.date} onMouseMove={(e) => show(e, `${dayLong(r.date)} · vs ${dayShort(r.sply)}`, tip)} onMouseLeave={hide}>
-                <rect className="ov-col-hit" x={x(i) - plotW / n / 2} y={0} width={plotW / n} height={H} />
-                {prev != null && <circle cx={x(i)} cy={y(prev)} r={3} style={{ fill: "var(--last)" }} />}
-                {now != null && <circle cx={x(i)} cy={y(now)} r={3.5} style={{ fill: "var(--this)" }} />}
-                {(i % step === 0 || i === lastIdx) && (
-                  <text x={x(i)} y={H - 8} textAnchor="middle" fontSize={11} className="ov-col-name">{dayNum(r.date)}</text>
-                )}
-              </g>
-            );
-          })}
-          {lastNow != null && (
-            <text x={x(lastIdx)} y={y(lastNow) - 9} textAnchor="end" fontSize={12} style={{ fill: "var(--this)", fontWeight: 600 }}>
-              {fmt(lastNow)}
-            </text>
-          )}
-        </svg>
-      </div>
-      {node}
-    </div>
-  );
 }
