@@ -5,7 +5,7 @@ import type { DailyData, DayFields } from "@/lib/types";
 import { abbrOf, arrowOf, crFmt, crSigned, full, growth, pct, roleName, signedPct, toneOfNum } from "@/lib/format";
 import { downloadExcel, ExportButton, type ExportCell, type ExportCol } from "@/lib/export";
 import {
-  Cell, dayLong, dayShort, difference, diffChg, Figures, growthChg, Ratios, ratiosOf, SortState, SortTh, sumFigures,
+  Cell, dayLong, dayMonth, dayWeekday, difference, diffChg, Figures, growthChg, isFriSat, Ratios, ratiosOf, sumFigures,
 } from "@/lib/daily";
 import DailyDetail from "./DailyDetail";
 import DayLines, { type DayPoint } from "./DayLines";
@@ -16,8 +16,23 @@ const TOTAL = "total";
 
 type DayRow = { date: string; sply: string; f: Figures; x: Ratios };
 
-type SortKey = "day" | "sales" | "gpv" | "gp" | "gpvoi" | "goi" | "ff" | "bs";
-type Sort = SortState<SortKey>;
+/** One row of the day table: a measure, with this month's and last year's value for any day or the whole period. */
+type Metric = {
+  label: string;
+  kind: "amount" | "ratio";
+  format: "money" | "int" | "pct";
+  now: (f: Figures, x: Ratios) => number | null;
+  prev: (f: Figures, x: Ratios) => number | null;
+};
+const METRICS: Metric[] = [
+  { label: "Sales", kind: "amount", format: "money", now: (f) => f.sales, prev: (f) => f.splySales },
+  { label: "GPV", kind: "amount", format: "money", now: (f) => f.gpv, prev: (f) => f.splyGpv },
+  { label: "GP%", kind: "ratio", format: "pct", now: (_, x) => x.gp, prev: (_, x) => x.splyGp },
+  { label: "GPV+OI", kind: "amount", format: "money", now: (f) => f.gpvOi, prev: (f) => f.splyGpvOi },
+  { label: "GP+OI%", kind: "ratio", format: "pct", now: (_, x) => x.goi, prev: (_, x) => x.splyGoi },
+  { label: "Footfall", kind: "amount", format: "int", now: (f) => f.ff, prev: (f) => f.splyFf },
+  { label: "Basket", kind: "amount", format: "money", now: (_, x) => x.bs, prev: (_, x) => x.splyBs },
+];
 
 const at = (a: (number | null)[], i: number) => a[i] ?? null;
 
@@ -46,7 +61,6 @@ const seriesOf = (rows: DayRow[], pick: (r: DayRow) => [number | null, number | 
 export default function Daily({ daily }: { daily: DailyData }) {
   const [group, setGroup] = useState<Group>("all");
   const [head, setHead] = useState<string>(TOTAL);
-  const [sort, setSort] = useState<Sort>({ key: "day", dir: "desc" });
   const g = daily.groups[group];
   const picked = g.heads.find((h) => headKey(h) === head);
   const source: DayFields = head === TOTAL || !picked ? g.total : picked;
@@ -58,14 +72,6 @@ export default function Daily({ daily }: { daily: DailyData }) {
   });
   const total = sumFigures(rows.map((r) => r.f));
   const totalX = ratiosOf(total);
-
-  const onSort = (k: SortKey) =>
-    setSort((s) => (s.key === k ? { key: k, dir: s.dir === "asc" ? "desc" : "asc" } : { key: k, dir: "desc" }));
-  const sorted = [...rows].sort((a, b) => {
-    const x = sortValue(a, sort.key), y = sortValue(b, sort.key);
-    const m = sort.dir === "asc" ? 1 : -1;
-    return typeof x === "string" ? x.localeCompare(y as string) * m : ((x as number) - (y as number)) * m;
-  });
 
   const moneyDelta = (n: number | null, l: number | null) => {
     const gr = growth(n, l), d = difference(n, l);
@@ -84,31 +90,32 @@ export default function Daily({ daily }: { daily: DailyData }) {
     { label: "GPV+OI", value: cr(total.gpvOi), sply: `SPLY: ${cr(total.splyGpvOi)}`, ...moneyDelta(total.gpvOi, total.splyGpvOi) },
   ];
 
+  const shown = (m: Metric, v: number | null) => (m.kind === "ratio" ? pct(v, 2) : full(v));
+  const changeOf = (m: Metric, n: number | null, p: number | null) => (m.kind === "ratio" ? diffChg(n, p) : growthChg(n, p));
+
+  // the same layout as the table: a column per day and one for the whole period, three rows per measure
   const exportDays = () => {
     const cols: ExportCol[] = [
-      { header: "Date", format: "text" }, { header: "Same day last year", format: "text" },
-      { header: "Sales", format: "money" }, { header: "Sales SPLY", format: "money" }, { header: "Sales growth", format: "pct" },
-      { header: "GPV", format: "money" }, { header: "GPV SPLY", format: "money" }, { header: "GPV growth", format: "pct" },
-      { header: "GP%", format: "pct" }, { header: "GP% SPLY", format: "pct" }, { header: "GP% change", format: "pct" },
-      { header: "GPV+OI", format: "money" }, { header: "GPV+OI SPLY", format: "money" }, { header: "GPV+OI growth", format: "pct" },
-      { header: "GP+OI%", format: "pct" }, { header: "GP+OI% SPLY", format: "pct" }, { header: "GP+OI% change", format: "pct" },
-      { header: "Footfall", format: "int" }, { header: "Footfall SPLY", format: "int" }, { header: "Footfall growth", format: "pct" },
-      { header: "Basket", format: "money" }, { header: "Basket SPLY", format: "money" }, { header: "Basket growth", format: "pct" },
+      { header: "Measure", format: "text" }, { header: "Row", format: "text" },
+      ...rows.map((r) => ({ header: dayMonth(r.date), format: "money" as const })),
+      { header: `Total (${rows.length} days)`, format: "money" as const },
     ];
-    const cells = (f: Figures, x: Ratios): ExportCell[] => [
-      f.sales, f.splySales, growth(f.sales, f.splySales),
-      f.gpv, f.splyGpv, growth(f.gpv, f.splyGpv),
-      x.gp, x.splyGp, difference(x.gp, x.splyGp),
-      f.gpvOi, f.splyGpvOi, growth(f.gpvOi, f.splyGpvOi),
-      x.goi, x.splyGoi, difference(x.goi, x.splyGoi),
-      f.ff, f.splyFf, growth(f.ff, f.splyFf),
-      x.bs, x.splyBs, growth(x.bs, x.splyBs),
-    ];
+    const all = [...rows.map((r) => ({ f: r.f, x: r.x })), { f: total, x: totalX }];
     const body: ExportCell[][] = [
-      ...sorted.map((r) => [dayLong(r.date), dayLong(r.sply), ...cells(r.f, r.x)]),
-      [`Total (${rows.length} days)`, "", ...cells(total, totalX)],
+      ["Day", "", ...rows.map((r) => dayWeekday(r.date)), ""],
+      ["Compared with", "Same day last year", ...rows.map((r) => dayLong(r.sply)), ""],
     ];
-    downloadExcel(`day-wise-sales-${group}.xlsx`, "Day wise sales", cols, body);
+    const formats: ExportCol["format"][] = ["text", "text"];
+    for (const m of METRICS) {
+      body.push([m.label, "This month", ...all.map(({ f, x }) => m.now(f, x))]);
+      body.push([m.label, "Same day last year", ...all.map(({ f, x }) => m.prev(f, x))]);
+      body.push([
+        m.label, m.kind === "ratio" ? "Change" : "Growth",
+        ...all.map(({ f, x }) => (m.kind === "ratio" ? difference(m.now(f, x), m.prev(f, x)) : growth(m.now(f, x), m.prev(f, x)))),
+      ]);
+      formats.push(m.format, m.format, "pct");
+    }
+    downloadExcel(`day-wise-sales-${group}.xlsx`, "Day wise sales", cols, body, formats);
   };
 
   return (
@@ -162,53 +169,35 @@ export default function Daily({ daily }: { daily: DailyData }) {
       <div className="xbar"><ExportButton onClick={exportDays} /></div>
       <div className="ov-panel ov-table-panel">
         <div className="ov-table-scroll">
-          <table className="ov-table">
+          <table className="ov-table day-wide">
             <caption>
-              {selectionLabel}, {GROUP_LABEL[group].toLowerCase()}. Each day against the same day last year. Click a heading to sort.
+              {selectionLabel}, {GROUP_LABEL[group].toLowerCase()}. Each day against the same day last year; hover a date to see which day.
+              Friday and Saturday are shaded.
             </caption>
             <thead>
               <tr>
-                <SortTh k="day" label="Day" sort={sort} onSort={onSort} cls="l" />
-                <SortTh k="sales" label="Sales" sort={sort} onSort={onSort} />
-                <SortTh k="gpv" label="GPV" sort={sort} onSort={onSort} />
-                <SortTh k="gp" label="GP%" sort={sort} onSort={onSort} />
-                <SortTh k="gpvoi" label="GPV+OI" sort={sort} onSort={onSort} />
-                <SortTh k="goi" label="GP+OI%" sort={sort} onSort={onSort} />
-                <SortTh k="ff" label="Footfall" sort={sort} onSort={onSort} />
-                <SortTh k="bs" label="Basket" sort={sort} onSort={onSort} />
+                <th scope="col">Measure</th>
+                {rows.map((r) => (
+                  <th key={r.date} scope="col" className={isFriSat(r.date) ? "wk" : undefined} title={`Compared with ${dayLong(r.sply)}`}>
+                    {dayMonth(r.date)}
+                    <div className="sub">{dayWeekday(r.date)}</div>
+                  </th>
+                ))}
+                <th scope="col">Total ({rows.length} days)</th>
               </tr>
             </thead>
             <tbody>
-              {sorted.map((r) => (
-                <tr key={r.date}>
-                  <th scope="row" style={{ textAlign: "left" }}>
-                    {dayLong(r.date)}
-                    <div className="sub">vs {dayShort(r.sply)}</div>
-                  </th>
-                  <Cell value={full(r.f.sales)} chg={growthChg(r.f.sales, r.f.splySales)} />
-                  <Cell value={full(r.f.gpv)} chg={growthChg(r.f.gpv, r.f.splyGpv)} />
-                  <Cell value={pct(r.x.gp, 2)} chg={diffChg(r.x.gp, r.x.splyGp)} />
-                  <Cell value={full(r.f.gpvOi)} chg={growthChg(r.f.gpvOi, r.f.splyGpvOi)} />
-                  <Cell value={pct(r.x.goi, 2)} chg={diffChg(r.x.goi, r.x.splyGoi)} />
-                  <Cell value={full(r.f.ff)} chg={growthChg(r.f.ff, r.f.splyFf)} />
-                  <Cell value={full(r.x.bs)} chg={growthChg(r.x.bs, r.x.splyBs)} />
+              {METRICS.map((m) => (
+                <tr key={m.label}>
+                  <th scope="row">{m.label}</th>
+                  {rows.map((r) => (
+                    <Cell key={r.date} cls={isFriSat(r.date) ? "wk" : undefined} value={shown(m, m.now(r.f, r.x))}
+                      chg={changeOf(m, m.now(r.f, r.x), m.prev(r.f, r.x))} />
+                  ))}
+                  <Cell value={shown(m, m.now(total, totalX))} chg={changeOf(m, m.now(total, totalX), m.prev(total, totalX))} />
                 </tr>
               ))}
             </tbody>
-            {rows.length > 0 && (
-              <tfoot>
-                <tr>
-                  <th scope="row" style={{ textAlign: "left" }}>Total ({rows.length} days)</th>
-                  <Cell value={full(total.sales)} chg={growthChg(total.sales, total.splySales)} />
-                  <Cell value={full(total.gpv)} chg={growthChg(total.gpv, total.splyGpv)} />
-                  <Cell value={pct(totalX.gp, 2)} chg={diffChg(totalX.gp, totalX.splyGp)} />
-                  <Cell value={full(total.gpvOi)} chg={growthChg(total.gpvOi, total.splyGpvOi)} />
-                  <Cell value={pct(totalX.goi, 2)} chg={diffChg(totalX.goi, totalX.splyGoi)} />
-                  <Cell value={full(total.ff)} chg={growthChg(total.ff, total.splyFf)} />
-                  <Cell value={full(totalX.bs)} chg={growthChg(totalX.bs, totalX.splyBs)} />
-                </tr>
-              </tfoot>
-            )}
           </table>
         </div>
       </div>
@@ -216,17 +205,4 @@ export default function Daily({ daily }: { daily: DailyData }) {
       <DailyDetail daily={daily} group={group} />
     </div>
   );
-}
-
-function sortValue(r: DayRow, key: SortKey): number | string {
-  switch (key) {
-    case "day": return r.date;
-    case "sales": return r.f.sales ?? 0;
-    case "gpv": return r.f.gpv ?? 0;
-    case "gp": return r.x.gp ?? 0;
-    case "gpvoi": return r.f.gpvOi ?? 0;
-    case "goi": return r.x.goi ?? 0;
-    case "ff": return r.f.ff ?? 0;
-    case "bs": return r.x.bs ?? 0;
-  }
 }

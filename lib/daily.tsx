@@ -49,6 +49,11 @@ const parseDay = (iso: string) => new Date(`${iso}T00:00:00`);
 export const dayShort = (iso: string) => parseDay(iso).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
 export const dayLong = (iso: string) => parseDay(iso).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
 export const dayNum = (iso: string) => parseDay(iso).getDate();
+/** 1-Oct */
+export const dayMonth = (iso: string) => parseDay(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" }).replace(" ", "-");
+export const dayWeekday = (iso: string) => parseDay(iso).toLocaleDateString("en-GB", { weekday: "short" });
+/** Friday and Saturday are the peak days, so they get their own shading. */
+export const isFriSat = (iso: string) => [5, 6].includes(parseDay(iso).getDay());
 
 export function SortTh<K extends string>({ k, label, sort, onSort, cls }: {
   k: K; label: string; sort: SortState<K>; onSort: (k: K) => void; cls?: string;
@@ -61,9 +66,9 @@ export function SortTh<K extends string>({ k, label, sort, onSort, cls }: {
   );
 }
 
-export function Cell({ value, chg }: { value: string; chg: Chg }) {
+export function Cell({ value, chg, cls }: { value: string; chg: Chg; cls?: string }) {
   return (
-    <td>
+    <td className={cls}>
       <div className="ov-td-val">{value}</div>
       {chg.text !== null && <div><span className={`delta ${chg.t}`}>{arrowOf(chg.t)}{chg.text}</span></div>}
     </td>

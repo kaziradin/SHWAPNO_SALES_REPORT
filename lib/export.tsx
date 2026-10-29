@@ -5,14 +5,18 @@ export type ExportCell = string | number | null;
 
 const NUMBER_FORMATS: Record<string, string> = { money: "#,##0", int: "#,##0", pct: "0.00%" };
 
-/** Downloads a table as an Excel (.xlsx) file. Numbers stay numeric; each column carries its own format. */
-export function downloadExcel(filename: string, sheet: string, cols: ExportCol[], rows: ExportCell[][]) {
+/** Downloads a table as an Excel (.xlsx) file. Numbers stay numeric; each column carries its own format,
+ *  unless `rowFormats` gives a format per row (for tables with a different measure on each row). */
+export function downloadExcel(
+  filename: string, sheet: string, cols: ExportCol[], rows: ExportCell[][], rowFormats?: ExportCol["format"][],
+) {
   const ws = XLSX.utils.aoa_to_sheet([cols.map((c) => c.header), ...rows]);
   const range = XLSX.utils.decode_range(ws["!ref"] ?? "A1");
   for (let r = 1; r <= range.e.r; r++) {
     cols.forEach((c, ci) => {
       const cell = ws[XLSX.utils.encode_cell({ r, c: ci })];
-      if (cell && typeof cell.v === "number" && c.format && NUMBER_FORMATS[c.format]) cell.z = NUMBER_FORMATS[c.format];
+      const format = rowFormats?.[r - 1] ?? c.format;
+      if (cell && typeof cell.v === "number" && format && NUMBER_FORMATS[format]) cell.z = NUMBER_FORMATS[format];
     });
   }
   ws["!cols"] = cols.map((c, ci) => {

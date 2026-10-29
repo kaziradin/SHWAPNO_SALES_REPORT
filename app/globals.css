@@ -433,6 +433,16 @@ td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .day-legend .sw-this { background: var(--this); }
 .day-legend .sw-last { background: var(--last); }
 .day-guide { stroke: var(--ov-ink2); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.6; }
+
+/* Day by day: a column per day, a row per measure; the first column stays in view while the days scroll */
+.day-wide { width: max-content; min-width: 100%; }
+.day-wide thead th { text-align: center; background: #1f3a5f; color: #fff; border-bottom: 0; }
+.day-wide thead th:first-child { text-align: left; background: #1f3a5f; }
+.day-wide thead th:not(:first-child), .day-wide td { min-width: 104px; }
+.day-wide thead th .sub { margin-top: 2px; font-size: 11.5px; font-weight: 400; color: #c9d6ea; }
+.day-wide thead th.wk { background: #dce6f7; color: #1f3a5f; }
+.day-wide thead th.wk .sub { color: #1f3a5f; font-weight: 600; }
+.day-wide td.wk { background: rgba(29, 78, 216, 0.06); }
 .drill-group td { background: #eef3fa; }
 .sub { font-size: 11px; font-weight: 400; color: #526176; margin-top: 2px; }
 
