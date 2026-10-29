@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useState } from "react";
-import type { Cat3Row, DailyData, HeadRow, Metrics, MonthOverview, Outlet, Report, SegmentKey } from "@/lib/types";
+import type { Cat3Row, DailyData, DailyHead, HeadRow, Metrics, MonthOverview, Outlet, Report, SegmentKey } from "@/lib/types";
 import {
   abbrOf, arrowOf, crFmt, crSigned, diff, growth, int, longDate, monthName, pct, pp, roleName, signedPct, taka, titleCase, toneOfNum,
 } from "@/lib/format";
@@ -120,7 +120,7 @@ export default function Dashboard({ report, months, daily }: { report: Report; m
           <Overview data={monthData} cmp={cmp} segment={segment} />
         </>
       )}
-      {tab === "heads" && <Heads report={report} cmp={cmp} />}
+      {tab === "heads" && <Heads report={report} cmp={cmp} daily={daily} />}
       {tab === "daily" && <Daily daily={daily} />}
       {tab === "outlets" && <Outlets outlets={report.outlets} cmp={cmp} />}
 
@@ -330,9 +330,35 @@ function SortTh({ k, label, sort, onSort, cls }: { k: HeadSort["key"]; label: st
   );
 }
 
-function Heads({ report, cmp }: { report: Report; cmp: Cmp }) {
+/** SPLY for the all-stores and same-stores groups, from the day-wise file: the same days summed, with the
+ *  same definitions. This month's figures stay as they were, and so do the other store groups. */
+function withDailySply(rows: HeadRow[], dailyHeads: DailyHead[]): HeadRow[] {
+  const byHead = new Map(dailyHeads.map((h) => [`${h.division}|${h.head}`, h]));
+  const sum = (a: (number | null)[]) => a.reduce<number>((t, v) => t + (v ?? 0), 0);
+  const over = (n: number, d: number) => (d ? n / d : null);
+  return rows.map((r) => {
+    const d = byHead.get(`${r.division}|${r.head}`);
+    if (!d) return r;
+    const salesLast = sum(d.splySales), ffLast = sum(d.splyFf);
+    const gpvLast = sum(d.splyGpv), gpvOiLast = gpvLast + sum(d.splyValueAdj);
+    return {
+      ...r,
+      salesLast, ffLast: ffLast || null, bsLast: over(salesLast, ffLast),
+      gpvLast, gpLast: over(gpvLast, salesLast), gpvOiLast, gpOiLast: over(gpvOiLast, salesLast),
+    };
+  });
+}
+
+function Heads({ report, cmp, daily }: { report: Report; cmp: Cmp; daily: DailyData }) {
   const s = CMP_LABEL[cmp].short;
-  const blocks = report[cmp].headBlocks ?? {};
+  const reportBlocks = report[cmp].headBlocks ?? {};
+  const blocks: Partial<Record<SegmentKey, HeadRow[]>> = cmp === "sply"
+    ? {
+        ...reportBlocks,
+        all: withDailySply(reportBlocks.all ?? [], daily.groups.all.heads),
+        same: withDailySply(reportBlocks.same ?? [], daily.groups.same.heads),
+      }
+    : reportBlocks;
   const keys = (Object.keys(SEGMENT_LABELS) as SegmentKey[]).filter((k) => blocks[k]?.length);
   const [drill, setDrill] = useState<HeadRow | null>(null);
   const [seg, setSeg] = useState<SegmentKey>("all");
@@ -434,6 +460,13 @@ function Heads({ report, cmp }: { report: Report; cmp: Cmp }) {
           </div>
         ))}
       </section>
+      {cmp === "sply" && (
+        <p className="ov-note">
+          {seg === "all" || seg === "same"
+            ? "SPLY for this store group comes from the day-wise file (Day wise Sales GP Trend.xlsx)."
+            : "SPLY for this store group comes from the Business Performance Report; the day-wise file covers all stores and same stores only."}
+        </p>
+      )}
       {companyTotal != null && (
         <p className="ov-note">Heads total {money(S)} of the company total {money(companyTotal)}; the rest is outside category heads (for example Restaurant).</p>
       )}
