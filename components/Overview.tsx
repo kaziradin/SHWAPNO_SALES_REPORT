@@ -113,8 +113,6 @@ export default function Overview({ data, cmp, segment }: { data: MonthOverview; 
         })}
       </section>
 
-      <Attention rows={rows} s={s} />
-
       <OwnFranchise data={data} cmp={cmp} segment={segment} />
 
       {/* Performance: one dominant chart (8) + supporting ranking (4) */}
@@ -128,18 +126,18 @@ export default function Overview({ data, cmp, segment }: { data: MonthOverview; 
         </Panel>
       </div>
 
-      <SectionHead title="Traffic and basket" s={s} />
-      <div className="ov-grid-66">
-        <Panel title="Footfall (FF)" sub={`invoices, growth vs ${s}`}><ColumnChart metric={FF} rows={rows} s={s} /></Panel>
-        <Panel title="Basket size" sub={`sales per invoice, growth vs ${s}`}><ColumnChart metric={BS} rows={rows} s={s} /></Panel>
-      </div>
-
       <SectionHead title="GPV and GPV+OI Performance" s={s} />
       <div className="ov-grid-66">
         <Panel title="GPV" sub={`growth vs ${s}`}><ColumnChart metric={GPV} rows={rows} s={s} /></Panel>
         <Panel title="GP%" sub={`change vs ${s}`}><ColumnChart metric={GP} rows={rows} s={s} /></Panel>
         <Panel title="GPV+OI" sub={`growth vs ${s}`}><ColumnChart metric={GPVOI} rows={rows} s={s} /></Panel>
         <Panel title="GP+OI%" sub={`change vs ${s}`}><ColumnChart metric={GPOI} rows={rows} s={s} /></Panel>
+      </div>
+
+      <SectionHead title="Traffic and basket" s={s} />
+      <div className="ov-grid-66">
+        <Panel title="Footfall (FF)" sub={`invoices, growth vs ${s}`}><ColumnChart metric={FF} rows={rows} s={s} /></Panel>
+        <Panel title="Basket size" sub={`sales per invoice, growth vs ${s}`}><ColumnChart metric={BS} rows={rows} s={s} /></Panel>
       </div>
 
       <SectionHead title="Division detail" />
@@ -185,39 +183,6 @@ function Panel({ title, sub, children }: { title: string; sub?: string; children
 }
 
 type Row = { key: string; label: string; row: DivisionRow | undefined };
-
-/** Exceptions: divisions whose GP+OI% fell vs the comparison, shown as the decrease in %, largest first. */
-function Attention({ rows, s }: { rows: Row[]; s: string }) {
-  const items = rows
-    .map((r) => {
-      const now = val(r.row, GPOI.now), last = lastVal(r.row, GPOI);
-      return { div: r.label, drop: now == null || last == null ? null : now - last };
-    })
-    .filter((x): x is { div: string; drop: number } => x.drop != null && x.drop < -0.00005)
-    .sort((a, b) => a.drop - b.drop);
-  return (
-    <section className="ov-attn" aria-labelledby="attn-h">
-      <div className="ov-attn-head">
-        <h2 id="attn-h">Needs attention</h2>
-        <span>Divisions where GP+OI% decreased vs {s}, largest decrease first</span>
-      </div>
-      {items.length === 0 ? (
-        <p className="ov-attn-none">No division has a lower GP+OI% than {s}.</p>
-      ) : (
-        <ul>
-          {items.map((it) => (
-            <li key={it.div}>
-              <span className="ov-attn-badge" aria-hidden>▼</span>
-              <b>{it.div}</b>
-              <span className="ov-attn-metric">GP+OI%</span>
-              <span className="ov-attn-val">{pctDiff(it.drop)}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
 
 /**
  * Which pair of store types the Own vs Franchise panel compares, by the Store group filter.
