@@ -1,12 +1,13 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useState } from "react";
-import type { Cat3Row, DailyData, DailyHead, HeadRow, Metrics, MonthOverview, Outlet, Report, SegmentKey } from "@/lib/types";
+import type { Cat3Row, DailyData, DailyDetailData, DailyHead, DetailRow, HeadRow, Metrics, MonthOverview, Outlet, Report, SegmentKey } from "@/lib/types";
 import {
   abbrOf, arrowOf, crFmt, crOrDash, crSigned, diff, growth, int, longDate, monthName, pct, pp, roleName, signedPct, titleCase, toneOfNum,
 } from "@/lib/format";
 import { DivergingBars, useTooltip, useWidth, type TipRow } from "./charts";
 import { downloadExcel, ExportButton, type ExportCell, type ExportCol } from "@/lib/export";
+import { uniqSorted } from "@/lib/daily";
 import FilterBar, { CMP_LABEL, SEGMENT_LABELS, type Cmp } from "./FilterBar";
 import Overview from "./Overview";
 import Daily from "./Daily";
@@ -353,14 +354,16 @@ type WideMeasure = {
   kind: "money" | "count" | "pct";
   growth: boolean;
   sortKey?: HeadSort["key"];
+  /** Footfall and basket: hidden when a CRP or category is chosen, as on Day wise sales. */
+  needsFootfall?: boolean;
   now: (r: Partial<HeadRow>) => number | null | undefined;
   last: (r: Partial<HeadRow>) => number | null | undefined;
 };
 const valueAdj = (gpvOi: number | null | undefined, gpv: number | null | undefined) => (gpvOi != null && gpv != null ? gpvOi - gpv : null);
 const WIDE: WideMeasure[] = [
   { label: "Sales", kind: "money", growth: true, sortKey: "sales", now: (r) => r.sales, last: (r) => r.salesLast },
-  { label: "Footfall", kind: "count", growth: true, sortKey: "ff", now: (r) => r.ff, last: (r) => r.ffLast },
-  { label: "Basket", kind: "count", growth: true, sortKey: "bs", now: (r) => r.bs, last: (r) => r.bsLast },
+  { label: "Footfall", kind: "count", growth: true, sortKey: "ff", needsFootfall: true, now: (r) => r.ff, last: (r) => r.ffLast },
+  { label: "Basket", kind: "count", growth: true, sortKey: "bs", needsFootfall: true, now: (r) => r.bs, last: (r) => r.bsLast },
   { label: "GP%", kind: "pct", growth: false, sortKey: "gp", now: (r) => r.gp, last: (r) => r.gpLast },
   { label: "GPV", kind: "money", growth: true, sortKey: "gpv", now: (r) => r.gpv, last: (r) => r.gpvLast },
   { label: "Value adj", kind: "money", growth: true, now: (r) => valueAdj(r.gpvOi, r.gpv), last: (r) => valueAdj(r.gpvOiLast, r.gpvLast) },
@@ -403,6 +406,18 @@ function Heads({ report, cmp, daily }: { report: Report; cmp: Cmp; daily: DailyD
   const [hsort, setHsort] = useState<HeadSort>({ key: "sales", dir: "desc" });
   const onHeadSort = (k: HeadSort["key"]) =>
     setHsort((s) => (s.key === k ? { key: k, dir: s.dir === "asc" ? "desc" : "asc" } : { key: k, dir: k === "name" ? "asc" : "desc" }));
+  // Head, CRP and Category filters of the head table; CRP and Category come from the detail rows, loaded only on this tab
+  const [hHead, setHHead] = useState("");
+  const [hCrp, setHCrp] = useState("");
+  const [hCat, setHCat] = useState("");
+  const [detail, setDetail] = useState<DailyDetailData | null>(null);
+  useEffect(() => {
+    let live = true;
+    import("@/data/daily-detail.json").then((m) => {
+      if (live) setDetail(m.default as unknown as DailyDetailData);
+    });
+    return () => { live = false; };
+  }, []);
   // the drill-down uses the Cat 3 sheet, which is SPLY only
   useEffect(() => { if (cmp !== "sply") setDrill(null); }, [cmp]);
   if (drill && cmp === "sply") {
@@ -410,11 +425,56 @@ function Heads({ report, cmp, daily }: { report: Report; cmp: Cmp; daily: DailyD
     return <HeadDrill head={drill} headSame={headSame} cat={report.cat3 ?? []} seg={seg} onBack={() => setDrill(null)} />;
   }
 
-  const rows = sortHeads(blocks[seg] ?? [], hsort);
+  const baseHeads = blocks[seg] ?? [];
+  const headKeyOf = (x: { division: string; head: string | null }) => `${x.division}|${x.head ?? ""}`;
+  const baseKeys = new Set(baseHeads.map(headKeyOf));
+  // CRP and category need the detail rows, which cover SPLY for all stores and same stores
+  const canDetail = cmp === "sply" && (seg === "all" || seg === "same") && Boolean(detail);
+  const detailRows: DetailRow[] = canDetail ? (detail?.groups[seg as "all" | "same"] ?? []).filter((r) => baseKeys.has(headKeyOf(r))) : [];
+  const rowsFor = (headK: string, crpV: string, catV: string) =>
+    detailRows.filter((r) => (!headK || headKeyOf(r) === headK) && (!crpV || r.crp === crpV) && (!catV || r.category === catV));
+  // each choice is kept only while rows still match it, so a choice never gives an empty table
+  const headSelKey = hHead && baseKeys.has(hHead) ? hHead : "";
+  const crpSel = canDetail && hCrp && uniqSorted(rowsFor(headSelKey, "", "").map((r) => r.crp)).includes(hCrp) ? hCrp : "";
+  const catSel = canDetail && hCat && uniqSorted(rowsFor(headSelKey, crpSel, "").map((r) => r.category)).includes(hCat) ? hCat : "";
+  const crpOptions = canDetail ? uniqSorted(rowsFor(headSelKey, "", catSel).map((r) => r.crp)) : [];
+  const catOptions = canDetail ? uniqSorted(rowsFor(headSelKey, crpSel, "").map((r) => r.category)) : [];
+  const fromDetail = Boolean(crpSel || catSel);
+  const filtered = Boolean(headSelKey || fromDetail);
+  const sumArr = (a: (number | null)[]) => a.reduce<number>((t, v) => t + (v ?? 0), 0);
+  // a head's figures from the detail rows of the chosen CRP and category; those rows have no footfall or basket
+  const headRowsFromDetail = (rs: DetailRow[]): HeadRow[] => {
+    const acc = new Map<string, { division: string; head: string; sales: number; salesLast: number; gpv: number; gpvLast: number; va: number; vaLast: number }>();
+    for (const r of rs) {
+      const k = headKeyOf(r);
+      const g = acc.get(k) ?? { division: r.division, head: r.head ?? "", sales: 0, salesLast: 0, gpv: 0, gpvLast: 0, va: 0, vaLast: 0 };
+      g.sales += sumArr(r.sales); g.salesLast += sumArr(r.splySales);
+      g.gpv += sumArr(r.gpv); g.gpvLast += sumArr(r.splyGpv);
+      g.va += sumArr(r.valueAdj); g.vaLast += sumArr(r.splyValueAdj);
+      acc.set(k, g);
+    }
+    return [...acc.values()].map((g): HeadRow => {
+      const role = baseHeads.find((h) => headKeyOf(h) === `${g.division}|${g.head}`)?.role ?? "";
+      const gpvOi = g.gpv + g.va, gpvOiLast = g.gpvLast + g.vaLast;
+      return {
+        division: g.division, role, head: g.head,
+        sales: g.sales, salesLast: g.salesLast, ff: null, ffLast: null, bs: null, bsLast: null,
+        gp: ratioOf(g.gpv, g.sales), gpLast: ratioOf(g.gpvLast, g.salesLast),
+        gpv: g.gpv, gpvLast: g.gpvLast, gpOi: ratioOf(gpvOi, g.sales), gpOiLast: ratioOf(gpvOiLast, g.salesLast),
+        gpvOi, gpvOiLast,
+      };
+    });
+  };
+  const rows = fromDetail
+    ? sortHeads(headRowsFromDetail(rowsFor(headSelKey, crpSel, catSel)), hsort)
+    : sortHeads(headSelKey ? baseHeads.filter((h) => headKeyOf(h) === headSelKey) : baseHeads, hsort);
+  // the wide table drops footfall and basket when a CRP or category is chosen
+  const shownWide = fromDetail ? WIDE.filter((m) => !m.needsFootfall) : WIDE;
   const sum = (f: (r: HeadRow) => number | null | undefined) => rows.reduce((t, r) => t + (f(r) ?? 0), 0);
   // all stores and same stores take their totals from the day-wise file, which covers every head, so the figures here
   // match the Day wise sales tab; the other store groups add up the heads
-  const dayTotal = cmp === "sply" && (seg === "all" || seg === "same") ? daily.groups[seg].total : null;
+  // with a filter on, the totals add up the filtered rows instead of the whole day-wise total
+  const dayTotal = cmp === "sply" && (seg === "all" || seg === "same") && !filtered ? daily.groups[seg].total : null;
   const dsum = (a: (number | null)[]) => a.reduce<number>((t, v) => t + (v ?? 0), 0);
   const headsSales = sum((r) => r.sales);
   const S = dayTotal ? dsum(dayTotal.sales) : headsSales, L = dayTotal ? dsum(dayTotal.splySales) : sum((r) => r.salesLast);
@@ -428,7 +488,7 @@ function Heads({ report, cmp, daily }: { report: Report; cmp: Cmp; daily: DailyD
   const ppOf = (a: number | null, b: number | null) => (a != null && b != null ? a - b : null);
 
   const kpi = [
-    { label: dayTotal ? "Sales" : `Sales · ${rows.length} heads`, value: crFmt(S), sply: `${s}: ${crFmt(L)}`, delta: `${crSigned(S - L)}   ${arrowOf(toneOfNum(grS))}${signedPct(grS, 2)}`, t: toneOfNum(grS) },
+    { label: dayTotal ? "Sales" : `Sales · ${rows.length} ${rows.length === 1 ? "head" : "heads"}`, value: crFmt(S), sply: `${s}: ${crFmt(L)}`, delta: `${crSigned(S - L)}   ${arrowOf(toneOfNum(grS))}${signedPct(grS, 2)}`, t: toneOfNum(grS) },
     { label: "GP%", value: pct(gp, 2), sply: `${s}: ${pct(gpL, 2)}`, delta: signedPct(ppOf(gp, gpL), 2), t: toneOfNum(ppOf(gp, gpL)) },
     { label: "GPV", value: crFmt(G), sply: `${s}: ${crFmt(GL)}`, delta: `${crSigned(G - GL)}   ${arrowOf(toneOfNum(grG))}${signedPct(grG, 2)}`, t: toneOfNum(grG) },
     { label: "GP+OI%", value: pct(goi, 2), sply: `${s}: ${pct(goiL, 2)}`, delta: signedPct(ppOf(goi, goiL), 2), t: toneOfNum(ppOf(goi, goiL)) },
@@ -452,14 +512,14 @@ function Heads({ report, cmp, daily }: { report: Report; cmp: Cmp; daily: DailyD
     gp, gpLast: gpL, gpv: G, gpvLast: GL, gpOi: goi, gpOiLast: goiL, gpvOi: GO, gpvOiLast: GOL,
   };
   const exportHeads = () => {
-    const exportMeasures = (r: Partial<HeadRow>): ExportCell[] => WIDE.flatMap((m) => {
+    const exportMeasures = (r: Partial<HeadRow>): ExportCell[] => shownWide.flatMap((m) => {
       const n = m.now(r) ?? null, l = m.last(r) ?? null;
       const d = n != null && l != null ? n - l : null;
       return m.growth ? [n, l, d, growthOf(n, l)] : [n, l, d];
     });
     const cols: ExportCol[] = [
       { header: "Division", format: "text" }, { header: "Category role", format: "text" }, { header: "Head", format: "text" },
-      ...WIDE.flatMap((m): ExportCol[] => {
+      ...shownWide.flatMap((m): ExportCol[] => {
         const f: ExportCol["format"] = m.kind === "money" ? "money" : m.kind === "count" ? "int" : "pct";
         const cs: ExportCol[] = [{ header: `${m.label} this`, format: f }, { header: `${m.label} ${s}`, format: f }, { header: `${m.label} diff`, format: f }];
         return m.growth ? [...cs, { header: `${m.label} GR%`, format: "pct" }] : cs;
@@ -494,16 +554,39 @@ function Heads({ report, cmp, daily }: { report: Report; cmp: Cmp; daily: DailyD
       </section>
       {cmp === "sply" && (
         <p className="ov-note">
-          {dayTotal
+          {seg === "all" || seg === "same"
             ? `This month and SPLY for this store group come from the day-wise file (Day wise Sales GP Trend.xlsx, ${daily.periodLabel}), so the figures match the Day wise sales tab.`
             : "This store group comes from the Business Performance Report; the day-wise file covers all stores and same stores only."}
         </p>
       )}
-      {companyTotal != null && (
+      {companyTotal != null && !filtered && (
         <p className="ov-note">Heads total {crOrDash(headsSales)} of the company total {crOrDash(companyTotal)}; the rest is outside category heads (for example Restaurant).</p>
       )}
 
       <div className="ov-section-head"><h2>Head detail</h2></div>
+      <div className="drill-filters day-filters">
+        <label>Head
+          <select value={headSelKey} onChange={(e) => { setHHead(e.target.value); setHCrp(""); setHCat(""); }} aria-label="Head">
+            <option value="">All heads</option>
+            {baseHeads.map((h) => <option key={headKeyOf(h)} value={headKeyOf(h)}>{h.head} · {titleCase(h.division)}</option>)}
+          </select>
+        </label>
+        <label>CRP
+          <select value={crpSel} onChange={(e) => setHCrp(e.target.value)} aria-label="CRP" disabled={!canDetail}>
+            <option value="">{canDetail ? "All CRPs" : "Not on this view"}</option>
+            {crpOptions.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </label>
+        <label>Category
+          <select value={catSel} onChange={(e) => setHCat(e.target.value)} aria-label="Category" disabled={!canDetail}>
+            <option value="">{canDetail ? "All categories" : "Not on this view"}</option>
+            {catOptions.map((c) => <option key={c} value={c}>{c === "0" ? "(not set)" : titleCase(c)}</option>)}
+          </select>
+        </label>
+        {filtered && (
+          <button type="button" className="exportbtn" onClick={() => { setHHead(""); setHCrp(""); setHCat(""); }}>Clear filters</button>
+        )}
+      </div>
       <div className="xbar"><ExportButton onClick={exportHeads} /></div>
       <div className="ov-panel ov-table-panel">
         <div className="ov-table-scroll">
@@ -516,7 +599,7 @@ function Heads({ report, cmp, daily }: { report: Report; cmp: Cmp; daily: DailyD
                 <th scope="col" className="l">Division</th>
                 <th scope="col" className="l">Category role</th>
                 <SortTh k="name" label="Head" sort={hsort} onSort={onHeadSort} cls="l" />
-                {WIDE.map((m) => (
+                {shownWide.map((m) => (
                   <Fragment key={m.label}>
                     {m.sortKey
                       ? <SortTh k={m.sortKey} label={`${m.label} this`} sort={hsort} onSort={onHeadSort} />
@@ -536,7 +619,7 @@ function Heads({ report, cmp, daily }: { report: Report; cmp: Cmp; daily: DailyD
                   <th scope="row" style={{ textAlign: "left" }}>
                     {cmp === "sply" ? <button className="linkish" onClick={() => setDrill(r)}>{r.head} ›</button> : r.head}
                   </th>
-                  {WIDE.map((m) => <WideCells key={m.label} m={m} r={r} />)}
+                  {shownWide.map((m) => <WideCells key={m.label} m={m} r={r} />)}
                 </tr>
               ))}
             </tbody>
@@ -544,9 +627,9 @@ function Heads({ report, cmp, daily }: { report: Report; cmp: Cmp; daily: DailyD
               <tfoot>
                 <tr>
                   <th scope="row" colSpan={3} style={{ textAlign: "left" }}>
-                    {dayTotal ? "Total (all category heads)" : `Total (${rows.length} heads)`}
+                    {dayTotal ? "Total (all category heads)" : `Total (${rows.length} ${rows.length === 1 ? "head" : "heads"})`}
                   </th>
-                  {WIDE.map((m) => <WideCells key={m.label} m={m} r={wideTotals} />)}
+                  {shownWide.map((m) => <WideCells key={m.label} m={m} r={wideTotals} />)}
                 </tr>
               </tfoot>
             )}
