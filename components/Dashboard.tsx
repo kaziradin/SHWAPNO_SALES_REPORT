@@ -346,6 +346,47 @@ function withDailyHeads(rows: HeadRow[], dailyHeads: DailyHead[]): HeadRow[] {
   });
 }
 
+/** The measures of the wide head table, in the order of the Power BI summary: each has this period, the comparison,
+ *  the difference and, for money and counts, the growth. Value adj is Adjusted GPV less GPV. */
+type WideMeasure = {
+  label: string;
+  kind: "money" | "count" | "pct";
+  growth: boolean;
+  sortKey?: HeadSort["key"];
+  now: (r: Partial<HeadRow>) => number | null | undefined;
+  last: (r: Partial<HeadRow>) => number | null | undefined;
+};
+const valueAdj = (gpvOi: number | null | undefined, gpv: number | null | undefined) => (gpvOi != null && gpv != null ? gpvOi - gpv : null);
+const WIDE: WideMeasure[] = [
+  { label: "Sales", kind: "money", growth: true, sortKey: "sales", now: (r) => r.sales, last: (r) => r.salesLast },
+  { label: "Footfall", kind: "count", growth: true, sortKey: "ff", now: (r) => r.ff, last: (r) => r.ffLast },
+  { label: "Basket", kind: "count", growth: true, sortKey: "bs", now: (r) => r.bs, last: (r) => r.bsLast },
+  { label: "GP%", kind: "pct", growth: false, sortKey: "gp", now: (r) => r.gp, last: (r) => r.gpLast },
+  { label: "GPV", kind: "money", growth: true, sortKey: "gpv", now: (r) => r.gpv, last: (r) => r.gpvLast },
+  { label: "Value adj", kind: "money", growth: true, now: (r) => valueAdj(r.gpvOi, r.gpv), last: (r) => valueAdj(r.gpvOiLast, r.gpvLast) },
+  { label: "Adjusted GP%", kind: "pct", growth: false, sortKey: "goi", now: (r) => r.gpOi, last: (r) => r.gpOiLast },
+  { label: "Adjusted GPV", kind: "money", growth: true, sortKey: "gpvoi", now: (r) => r.gpvOi, last: (r) => r.gpvOiLast },
+];
+
+/** One measure in the wide head table: this period, the comparison, the difference and, where it applies, the growth. */
+function WideCells({ m, r }: { m: WideMeasure; r: Partial<HeadRow> }) {
+  const n = m.now(r) ?? null, l = m.last(r) ?? null;
+  const d = n != null && l != null ? n - l : null;
+  const g = growthOf(n, l);
+  const value = (v: number | null) => (m.kind === "money" ? crOrDash(v) : m.kind === "count" ? (v == null ? "–" : fm(v)) : pct(v, 2));
+  const diff = m.kind === "money" ? (d == null ? "–" : crSigned(d))
+    : m.kind === "count" ? (d == null ? "–" : `${d >= 0 ? "+" : "−"}${fm(Math.abs(d))}`)
+    : signedPct(d, 2);
+  return (
+    <>
+      <td>{value(n)}</td>
+      <td>{value(l)}</td>
+      <td><span className={`delta ${toneOfNum(d)}`}>{diff}</span></td>
+      {m.growth && <td><span className={`delta ${toneOfNum(g)}`}>{arrowOf(toneOfNum(g))}{signedPct(g, 2)}</span></td>}
+    </>
+  );
+}
+
 function Heads({ report, cmp, daily }: { report: Report; cmp: Cmp; daily: DailyData }) {
   const s = CMP_LABEL[cmp].short;
   const reportBlocks = report[cmp].headBlocks ?? {};
@@ -405,35 +446,28 @@ function Heads({ report, cmp, daily }: { report: Report; cmp: Cmp; daily: DailyD
     return { change: signedPct(d, 2), t: toneOfNum(d) };
   };
 
+  // the totals row: the day-wise totals for all stores and same stores, otherwise the sum of the heads
+  const wideTotals: Partial<HeadRow> = {
+    sales: S, salesLast: L, ff: FF, ffLast: FFL, bs: S / (FF || 1), bsLast: L / (FFL || 1),
+    gp, gpLast: gpL, gpv: G, gpvLast: GL, gpOi: goi, gpOiLast: goiL, gpvOi: GO, gpvOiLast: GOL,
+  };
   const exportHeads = () => {
+    const exportMeasures = (r: Partial<HeadRow>): ExportCell[] => WIDE.flatMap((m) => {
+      const n = m.now(r) ?? null, l = m.last(r) ?? null;
+      const d = n != null && l != null ? n - l : null;
+      return m.growth ? [n, l, d, growthOf(n, l)] : [n, l, d];
+    });
     const cols: ExportCol[] = [
       { header: "Division", format: "text" }, { header: "Category role", format: "text" }, { header: "Head", format: "text" },
-      { header: "Sales", format: "money" }, { header: `Sales ${s}`, format: "money" }, { header: "Sales growth", format: "pct" },
-      { header: "GPV", format: "money" }, { header: `GPV ${s}`, format: "money" }, { header: "GPV growth", format: "pct" },
-      { header: "GP%", format: "pct" }, { header: `GP% ${s}`, format: "pct" }, { header: "GP% change", format: "pct" },
-      { header: "GPV+OI", format: "money" }, { header: `GPV+OI ${s}`, format: "money" }, { header: "GPV+OI growth", format: "pct" },
-      { header: "GP+OI%", format: "pct" }, { header: `GP+OI% ${s}`, format: "pct" }, { header: "GP+OI% change", format: "pct" },
-      { header: "Footfall", format: "int" }, { header: `Footfall ${s}`, format: "int" }, { header: "Footfall growth", format: "pct" },
-      { header: "Basket", format: "int" }, { header: `Basket ${s}`, format: "int" }, { header: "Basket growth", format: "pct" },
+      ...WIDE.flatMap((m): ExportCol[] => {
+        const f: ExportCol["format"] = m.kind === "money" ? "money" : m.kind === "count" ? "int" : "pct";
+        const cs: ExportCol[] = [{ header: `${m.label} this`, format: f }, { header: `${m.label} ${s}`, format: f }, { header: `${m.label} diff`, format: f }];
+        return m.growth ? [...cs, { header: `${m.label} GR%`, format: "pct" }] : cs;
+      }),
     ];
-    const rowValues = (r: Partial<HeadRow>): ExportCell[] => {
-      const bsNow = (r.sales ?? 0) / (r.ff || 1), bsLast = (r.salesLast ?? 0) / (r.ffLast || 1);
-      return [
-        r.sales ?? 0, r.salesLast ?? 0, growthOf(r.sales, r.salesLast),
-        r.gpv ?? 0, r.gpvLast ?? 0, growthOf(r.gpv, r.gpvLast),
-        r.gp ?? null, r.gpLast ?? null, diffOf(r.gp, r.gpLast),
-        r.gpvOi ?? 0, r.gpvOiLast ?? 0, growthOf(r.gpvOi, r.gpvOiLast),
-        r.gpOi ?? null, r.gpOiLast ?? null, diffOf(r.gpOi, r.gpOiLast),
-        r.ff ?? 0, r.ffLast ?? 0, growthOf(r.ff, r.ffLast),
-        bsNow, bsLast, growthOf(bsNow, bsLast),
-      ];
-    };
     const body: ExportCell[][] = [
-      ...rows.map((r) => [titleCase(r.division), roleName(r.role), r.head, ...rowValues(r)]),
-      [dayTotal ? "Total (all category heads)" : "Total (" + rows.length + " heads)", "", "", ...rowValues({
-        sales: S, salesLast: L, gpv: G, gpvLast: GL, gp: gp, gpLast: gpL,
-        gpvOi: GO, gpvOiLast: GOL, gpOi: goi, gpOiLast: goiL, ff: FF, ffLast: FFL,
-      })],
+      ...rows.map((r) => [r.division, roleName(r.role), r.head, ...exportMeasures(r)]),
+      [dayTotal ? "Total (all category heads)" : "Total (" + rows.length + " heads)", "", "", ...exportMeasures(wideTotals)],
     ];
     downloadExcel(`category-heads-${s === "SPLY" ? "sply" : "splm"}.xlsx`, "Category heads", cols, body);
   };
@@ -469,6 +503,57 @@ function Heads({ report, cmp, daily }: { report: Report; cmp: Cmp; daily: DailyD
         <p className="ov-note">Heads total {crOrDash(headsSales)} of the company total {crOrDash(companyTotal)}; the rest is outside category heads (for example Restaurant).</p>
       )}
 
+      <div className="ov-section-head"><h2>Head detail</h2></div>
+      <div className="xbar"><ExportButton onClick={exportHeads} /></div>
+      <div className="ov-panel ov-table-panel">
+        <div className="ov-table-scroll">
+          <table className="ov-table">
+            <caption>
+              Category heads vs {s}. {cmp === "sply" ? "Click a head to see its responsible persons and categories. " : "Responsible persons are available on SPLY. "}Click a heading to sort.
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col" className="l">Division</th>
+                <th scope="col" className="l">Category role</th>
+                <SortTh k="name" label="Head" sort={hsort} onSort={onHeadSort} cls="l" />
+                {WIDE.map((m) => (
+                  <Fragment key={m.label}>
+                    {m.sortKey
+                      ? <SortTh k={m.sortKey} label={`${m.label} this`} sort={hsort} onSort={onHeadSort} />
+                      : <th scope="col">{m.label} this</th>}
+                    <th scope="col">{m.label} {s}</th>
+                    <th scope="col">Diff</th>
+                    {m.growth && <th scope="col">GR%</th>}
+                  </Fragment>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.division + r.head}>
+                  <td className="l" style={{ textAlign: "left" }}>{r.division}</td>
+                  <td className="l" style={{ textAlign: "left" }}>{roleName(r.role)}</td>
+                  <th scope="row" style={{ textAlign: "left" }}>
+                    {cmp === "sply" ? <button className="linkish" onClick={() => setDrill(r)}>{r.head} ›</button> : r.head}
+                  </th>
+                  {WIDE.map((m) => <WideCells key={m.label} m={m} r={r} />)}
+                </tr>
+              ))}
+            </tbody>
+            {rows.length > 0 && (
+              <tfoot>
+                <tr>
+                  <th scope="row" colSpan={3} style={{ textAlign: "left" }}>
+                    {dayTotal ? "Total (all category heads)" : `Total (${rows.length} heads)`}
+                  </th>
+                  {WIDE.map((m) => <WideCells key={m.label} m={m} r={wideTotals} />)}
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      </div>
+
       <div className="ov-section-head"><h2>Sales performance</h2></div>
       <HeadChart title="Sales by category head" sub={`value and growth vs ${s}`} sLabel={s}
         items={rows.map((r) => growthItem(r, r.sales, r.salesLast, "crore"))} />
@@ -493,60 +578,6 @@ function Heads({ report, cmp, daily }: { report: Report; cmp: Cmp; daily: DailyD
           items={rows.map((r) => growthItem(r, r.bs, r.bsLast, "full"))} />
       </div>
 
-      <div className="ov-section-head"><h2>Head detail</h2></div>
-      <div className="xbar"><ExportButton onClick={exportHeads} /></div>
-      <div className="ov-panel ov-table-panel">
-        <div className="ov-table-scroll">
-          <table className="ov-table">
-            <caption>
-              Category heads vs {s}.{cmp === "sply" ? " Click a head to see its responsible persons and categories." : " Responsible persons are available on SPLY."}
-            </caption>
-            <thead>
-              <tr>
-                <SortTh k="name" label="Head" sort={hsort} onSort={onHeadSort} cls="l" />
-                <SortTh k="sales" label="Sales" sort={hsort} onSort={onHeadSort} />
-                <SortTh k="gpv" label="GPV" sort={hsort} onSort={onHeadSort} />
-                <SortTh k="gp" label="GP%" sort={hsort} onSort={onHeadSort} />
-                <SortTh k="gpvoi" label="GPV+OI" sort={hsort} onSort={onHeadSort} />
-                <SortTh k="goi" label="GP+OI%" sort={hsort} onSort={onHeadSort} />
-                <SortTh k="ff" label="Footfall" sort={hsort} onSort={onHeadSort} />
-                <SortTh k="bs" label="Basket" sort={hsort} onSort={onHeadSort} />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.division + r.head}>
-                  <th scope="row" style={{ textAlign: "left" }}>
-                    {cmp === "sply" ? <button className="linkish" onClick={() => setDrill(r)}>{r.head} ›</button> : r.head}
-                    <div className="sub">{titleCase(r.division)} · {roleName(r.role)}</div>
-                  </th>
-                  <Num value={crOrDash(r.sales ?? 0)} {...gFrom(r.sales, r.salesLast)} />
-                  <Num value={crOrDash(r.gpv ?? 0)} {...gFrom(r.gpv, r.gpvLast)} />
-                  <Num value={pct(r.gp, 2)} {...pFrom(r.gp, r.gpLast)} />
-                  <Num value={crOrDash(r.gpvOi ?? 0)} {...gFrom(r.gpvOi, r.gpvOiLast)} />
-                  <Num value={pct(r.gpOi, 2)} {...pFrom(r.gpOi, r.gpOiLast)} />
-                  <Num value={money(r.ff ?? 0)} {...gFrom(r.ff, r.ffLast)} />
-                  <Num value={money((r.sales ?? 0) / (r.ff || 1))} {...gFrom((r.sales ?? 0) / (r.ff || 1), (r.salesLast ?? 0) / (r.ffLast || 1))} />
-                </tr>
-              ))}
-            </tbody>
-            {rows.length > 0 && (
-              <tfoot>
-                <tr>
-                  <th scope="row" style={{ textAlign: "left" }}>{dayTotal ? "Total (all category heads)" : `Total (${rows.length} heads)`}</th>
-                  <Num value={crOrDash(S)} {...gFrom(S, L)} />
-                  <Num value={crOrDash(G)} {...gFrom(G, GL)} />
-                  <Num value={pct(gp, 2)} {...pFrom(gp, gpL)} />
-                  <Num value={crOrDash(GO)} {...gFrom(GO, GOL)} />
-                  <Num value={pct(goi, 2)} {...pFrom(goi, goiL)} />
-                  <Num value={money(FF)} {...gFrom(FF, FFL)} />
-                  <Num value={money(S / (FF || 1))} {...gFrom(S / (FF || 1), L / (FFL || 1))} />
-                </tr>
-              </tfoot>
-            )}
-          </table>
-        </div>
-      </div>
       {rows.length === 0 && <p className="hint">No category heads for this store group.</p>}
     </div>
   );
