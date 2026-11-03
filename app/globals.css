@@ -452,6 +452,8 @@ td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .day-wide thead th.sel { background: #1d4ed8; color: #fff; }
 .day-wide thead th.sel .sub { color: #fff; font-weight: 600; }
 .day-wide td.sel { background: rgba(29, 78, 216, 0.14); box-shadow: inset 2px 0 0 #1d4ed8, inset -2px 0 0 #1d4ed8; }
+.daypick { background: none; border: 0; padding: 0; color: inherit; font: inherit; cursor: pointer; text-align: center; }
+.daypick:focus-visible { outline: 2px solid #1d4ed8; outline-offset: 2px; }
 .drill-group td { background: #eef3fa; }
 .sub { font-size: 11px; font-weight: 400; color: #526176; margin-top: 2px; }
 

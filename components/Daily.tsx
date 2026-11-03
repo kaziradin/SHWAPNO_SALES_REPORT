@@ -70,6 +70,8 @@ export default function Daily({ daily }: { daily: DailyData }) {
   const [period, setPeriod] = useState<string>(MTD);
   const [from, setFrom] = useState<string>(firstDate);
   const [to, setTo] = useState<string>(lastDate);
+  // a day clicked in the Day by day table: the KPIs and charts show that day, the table keeps its view
+  const [focus, setFocus] = useState<string>("");
   const [group, setGroup] = useState<Group>("all");
   const [head, setHead] = useState<string>(TOTAL);
   const [crp, setCrp] = useState("");
@@ -149,7 +151,14 @@ export default function Daily({ daily }: { daily: DailyData }) {
   const compareName = chosen.length === 1 ? dayLong(splys[0])
     : chosen.length === 0 ? "no matched days"
     : `the matched days of ${dayMonth(splys[0])} to ${dayMonth(splys[splys.length - 1])} ${splys[0].slice(0, 4)}`;
-  const colClass = (date: string) => (isFriSat(date) ? "wk" : undefined);
+  // a clicked day is shown in the KPIs and charts; a day outside the chosen period is ignored
+  const focusRow = chosen.find((r) => r.date === focus);
+  const shownF = focusRow ? focusRow.f : total;
+  const shownX = focusRow ? focusRow.x : totalX;
+  const chartBand = focusRow ? { from: focus, to: focus } : band;
+  const chartTotalLabel = focusRow ? "Selected day" : totalLabel;
+  const toggleFocus = (date: string) => setFocus((f) => (f === date ? "" : date));
+  const colClass = (date: string) => [isFriSat(date) ? "wk" : "", date === focus ? "sel" : ""].filter(Boolean).join(" ") || undefined;
 
   const moneyDelta = (n: number | null, l: number | null) => {
     const gr = growth(n, l), d = difference(n, l);
@@ -161,11 +170,11 @@ export default function Daily({ daily }: { daily: DailyData }) {
   };
   const cr = (v: number | null) => (v == null ? "–" : crFmt(v));
   const kpi = [
-    { label: "Sales", value: cr(total.sales), sply: `SPLY: ${cr(total.splySales)}`, ...moneyDelta(total.sales, total.splySales) },
-    { label: "GP%", value: pct(totalX.gp, 2), sply: `SPLY: ${pct(totalX.splyGp, 2)}`, ...pointDelta(totalX.gp, totalX.splyGp) },
-    { label: "GPV", value: cr(total.gpv), sply: `SPLY: ${cr(total.splyGpv)}`, ...moneyDelta(total.gpv, total.splyGpv) },
-    { label: "GP+OI%", value: pct(totalX.goi, 2), sply: `SPLY: ${pct(totalX.splyGoi, 2)}`, ...pointDelta(totalX.goi, totalX.splyGoi) },
-    { label: "GPV+OI", value: cr(total.gpvOi), sply: `SPLY: ${cr(total.splyGpvOi)}`, ...moneyDelta(total.gpvOi, total.splyGpvOi) },
+    { label: "Sales", value: cr(shownF.sales), sply: `SPLY: ${cr(shownF.splySales)}`, ...moneyDelta(shownF.sales, shownF.splySales) },
+    { label: "GP%", value: pct(shownX.gp, 2), sply: `SPLY: ${pct(shownX.splyGp, 2)}`, ...pointDelta(shownX.gp, shownX.splyGp) },
+    { label: "GPV", value: cr(shownF.gpv), sply: `SPLY: ${cr(shownF.splyGpv)}`, ...moneyDelta(shownF.gpv, shownF.splyGpv) },
+    { label: "GP+OI%", value: pct(shownX.goi, 2), sply: `SPLY: ${pct(shownX.splyGoi, 2)}`, ...pointDelta(shownX.goi, shownX.splyGoi) },
+    { label: "GPV+OI", value: cr(shownF.gpvOi), sply: `SPLY: ${cr(shownF.splyGpvOi)}`, ...moneyDelta(shownF.gpvOi, shownF.splyGpvOi) },
   ];
 
   const shown = (m: Metric, v: number | null) => (m.kind === "ratio" ? pct(v, 2) : m.crore ? crOrDash(v) : full(v));
@@ -200,7 +209,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
     <div className="ov">
       <div className="drill-filters day-filters">
         <label>Period
-          <select value={period} onChange={(e) => setPeriod(e.target.value)} aria-label="Period">
+          <select value={period} onChange={(e) => { setPeriod(e.target.value); setFocus(""); }} aria-label="Period">
             <option value={MTD}>Month to date ({daily.periodLabel})</option>
             <option value={RANGE}>Date range (From and To)</option>
             {[...daily.days].reverse().map((d) => <option key={d.date} value={d.date}>{dayLong(d.date)}</option>)}
@@ -259,21 +268,27 @@ export default function Daily({ daily }: { daily: DailyData }) {
         {period === RANGE && from > to && " The two dates were swapped, so the range runs from the earlier to the later date."}
         {fromRows && " Footfall and basket are hidden when a CRP or category is chosen: a bill with items from several categories would be counted more than once."}
       </p>
+      {focusRow && (
+        <p className="ov-note">
+          Showing {dayLong(focus)} in the KPIs and charts.{" "}
+          <button type="button" className="linkish" onClick={() => setFocus("")}>Back to {periodName}</button>
+        </p>
+      )}
 
       <div className="day-charts">
         <DayLines title="Day wise sales" kind="money" points={seriesOf(rows, (r) => [r.f.sales, r.f.splySales])}
-          total={{ now: total.sales, prev: total.splySales }} band={band} totalLabel={totalLabel} />
+          total={{ now: shownF.sales, prev: shownF.splySales }} band={chartBand} totalLabel={chartTotalLabel} />
         <div className="day-pair">
           <DayLines title="Day wise GPV" kind="money" points={seriesOf(rows, (r) => [r.f.gpv, r.f.splyGpv])}
-            total={{ now: total.gpv, prev: total.splyGpv }} band={band} totalLabel={totalLabel} />
+            total={{ now: shownF.gpv, prev: shownF.splyGpv }} band={chartBand} totalLabel={chartTotalLabel} />
           <DayLines title="Day wise GPV+OI" kind="money" points={seriesOf(rows, (r) => [r.f.gpvOi, r.f.splyGpvOi])}
-            total={{ now: total.gpvOi, prev: total.splyGpvOi }} band={band} totalLabel={totalLabel} />
+            total={{ now: shownF.gpvOi, prev: shownF.splyGpvOi }} band={chartBand} totalLabel={chartTotalLabel} />
         </div>
         <div className="day-pair">
           <DayLines title="Day wise GP%" kind="pct" points={seriesOf(rows, (r) => [r.x.gp, r.x.splyGp])}
-            total={{ now: totalX.gp, prev: totalX.splyGp }} band={band} totalLabel={totalLabel} />
+            total={{ now: shownX.gp, prev: shownX.splyGp }} band={chartBand} totalLabel={chartTotalLabel} />
           <DayLines title="Day wise GP+OI%" kind="pct" points={seriesOf(rows, (r) => [r.x.goi, r.x.splyGoi])}
-            total={{ now: totalX.goi, prev: totalX.splyGoi }} band={band} totalLabel={totalLabel} />
+            total={{ now: shownX.goi, prev: shownX.splyGoi }} band={chartBand} totalLabel={chartTotalLabel} />
         </div>
       </div>
 
@@ -283,7 +298,8 @@ export default function Daily({ daily }: { daily: DailyData }) {
         <div className="ov-table-scroll">
           <table className="ov-table day-wide">
             <caption>
-              {selectionLabel}, {GROUP_LABEL[group].toLowerCase()}, {periodName}. Each day against the same day last year; hover a date to see which day.
+              {selectionLabel}, {GROUP_LABEL[group].toLowerCase()}, {periodName}. Each day against the same day last year.
+              Click a day or any number in its column to show that day in the KPIs and charts; click it again to go back.
               Friday and Saturday are shaded.
             </caption>
             <thead>
@@ -291,8 +307,10 @@ export default function Daily({ daily }: { daily: DailyData }) {
                 <th scope="col">Measure</th>
                 {chosen.map((r) => (
                   <th key={r.date} scope="col" className={colClass(r.date)} title={`Compared with ${dayLong(r.sply)}`}>
-                    {dayMonth(r.date)}
-                    <div className="sub">{dayWeekday(r.date)}</div>
+                    <button type="button" className="daypick" onClick={() => toggleFocus(r.date)} aria-pressed={focus === r.date}>
+                      {dayMonth(r.date)}
+                      <span className="sub" style={{ display: "block" }}>{dayWeekday(r.date)}</span>
+                    </button>
                   </th>
                 ))}
                 {withTotal && <th scope="col">Total ({chosen.length} days)</th>}
@@ -304,7 +322,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
                   <th scope="row">{m.label}</th>
                   {chosen.map((r) => (
                     <Cell key={r.date} cls={colClass(r.date)} value={shown(m, m.now(r.f, r.x))}
-                      chg={changeOf(m, m.now(r.f, r.x), m.prev(r.f, r.x))} />
+                      chg={changeOf(m, m.now(r.f, r.x), m.prev(r.f, r.x))} onClick={() => toggleFocus(r.date)} />
                   ))}
                   {withTotal && (
                     <Cell value={shown(m, m.now(total, totalX))} chg={changeOf(m, m.now(total, totalX), m.prev(total, totalX))} />

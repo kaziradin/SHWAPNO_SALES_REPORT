@@ -90,9 +90,9 @@ export function SortTh<K extends string>({ k, label, sort, onSort, cls }: {
   );
 }
 
-export function Cell({ value, chg, cls }: { value: string; chg: Chg; cls?: string }) {
+export function Cell({ value, chg, cls, onClick }: { value: string; chg: Chg; cls?: string; onClick?: () => void }) {
   return (
-    <td className={cls}>
+    <td className={cls} onClick={onClick} style={onClick ? { cursor: "pointer" } : undefined}>
       <div className="ov-td-val">{value}</div>
       {chg.text !== null && <div><span className={`delta ${chg.t}`}>{arrowOf(chg.t)}{chg.text}</span></div>}
     </td>
