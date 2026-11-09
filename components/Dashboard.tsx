@@ -551,15 +551,15 @@ function Heads({ report, cmp, daily, onCmp }: { report: Report; cmp: Cmp; daily:
       <div className="xbar"><ExportButton onClick={exportHeads} /></div>
       <div className="ov-panel ov-table-panel">
         <div className="ov-table-scroll">
-          <table className="ov-table">
+          <table className="ov-table dh">
             <caption>
               Category heads vs {s}. Click a head to see its responsible persons and categories. Click a heading to sort.
             </caption>
             <thead>
               <tr>
-                <th scope="col" className="l">Division</th>
-                <th scope="col" className="l">Category role</th>
-                <SortTh k="name" label="Head" sort={hsort} onSort={onHeadSort} cls="l" />
+                <th scope="col" className="l dh-c1" title="Division">Div</th>
+                <th scope="col" className="l dh-c2" title="Category role">Role</th>
+                <SortTh k="name" label="Head" sort={hsort} onSort={onHeadSort} cls="l dh-c3" />
                 {shownWide.map((m) => (
                   <Fragment key={m.label}>
                     {m.sortKey
@@ -575,9 +575,9 @@ function Heads({ report, cmp, daily, onCmp }: { report: Report; cmp: Cmp; daily:
             <tbody>
               {rows.map((r) => (
                 <tr key={r.division + r.head}>
-                  <td className="l" style={{ textAlign: "left" }}>{r.division}</td>
-                  <td className="l" style={{ textAlign: "left" }}>{roleName(r.role)}</td>
-                  <th scope="row" style={{ textAlign: "left" }}>
+                  <td className="l dh-c1" title={r.division}>{abbrOf(r.division)}</td>
+                  <td className="l dh-c2">{r.role}</td>
+                  <th scope="row" className="l dh-c3">
                     <button className="linkish" onClick={() => setDrill(r)}>{r.head} ›</button>
                   </th>
                   {shownWide.map((m) => <WideCells key={m.label} m={m} r={r} />)}
@@ -587,7 +587,7 @@ function Heads({ report, cmp, daily, onCmp }: { report: Report; cmp: Cmp; daily:
             {rows.length > 0 && (
               <tfoot>
                 <tr>
-                  <th scope="row" colSpan={3} style={{ textAlign: "left" }}>
+                  <th scope="row" colSpan={3} className="l dh-foot">
                     {dayTotal ? "Total (all category heads)" : `Total (${rows.length} ${rows.length === 1 ? "head" : "heads"})`}
                   </th>
                   {shownWide.map((m) => <WideCells key={m.label} m={m} r={wideTotals} />)}
