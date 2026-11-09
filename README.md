@@ -32,7 +32,9 @@ The day-wise report gives sales, GP% and footfall, with no value adj. `extract_d
 - Value adj per division, category level 3, head and CRP from `Day Wise Val Adj.xlsx` (this month) and `Day Wise Val Adj SPLY.xlsx` (last year, looked up by the SPLY date). Same stores use the SPLY SAME OWN and SPLY SAME FRAN columns.
 - GP+OI = GPV + value adj, so GP+OI% = GP% + value adj / sales.
 
-The report has no category role for each head, so the role comes from the monthly report (`data/report.json`); a head that report does not list takes the role of its division.
+The report has no category role for each head, so the role comes from the monthly report (`data/report.json`); a head that report does not list takes the role of its division. The day-wise report calls the LIFESTYLE head "Ms. Adiba"; it is shown as Md. Hasib-Ul-Alam, as in the monthly report.
+
+Value adj on CRPs with no head ("Unmapped") is in the totals and in the detail rows under head "Unmapped", but not in the head rows, which list only the named heads.
 
 `update.bat` then commits and pushes the `data` folder. The GitHub Actions workflow (`.github/workflows/pages.yml`) rebuilds the site and publishes it to
 **https://kaziradin.github.io/SHWAPNO_SALES_REPORT/**.

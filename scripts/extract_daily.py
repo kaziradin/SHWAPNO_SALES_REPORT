@@ -47,6 +47,9 @@ STORES = {"all": 0, "same": 1}
 OUTPUT = ("sales", "splySales", "gpv", "splyGpv", "valueAdj", "splyValueAdj", "ff", "splyFf")
 DETAIL_FIELDS = ("sales", "splySales", "gpv", "splyGpv", "valueAdj", "splyValueAdj")
 ZERO = (0.0, 0.0)
+# The day-wise report names the LIFESTYLE head 'Ms. Adiba'; the monthly report and the head list use
+# Md. Hasib-Ul-Alam, so the day-wise name is changed to that. Keyed by division, so other heads are unaffected.
+HEAD_NAMES = {("LIFESTYLE", "Ms. Adiba"): "Md. Hasib-Ul-Alam"}
 
 
 def number(v):
@@ -67,6 +70,10 @@ def money(values):
 
 def product(a, b):
     return a * b if a is not None and b is not None else None
+
+
+def head_of(division, head):
+    return HEAD_NAMES.get((division, head), head)
 
 
 def find_day_wise(folder=SALES_FOLDER):
@@ -125,6 +132,7 @@ def read_heads(ws):
         div, head = text(row[3]), text(row[4])
         if not isinstance(row[0], dt.datetime) or div is None or head is None:
             continue
+        head = head_of(div, head)
         out[(row[0].date(), div, head)] = {k: number(row[i]) for k, i in cols.items()}
         if (div, head) not in order:
             order.append((div, head))
@@ -145,7 +153,7 @@ def read_leaves(ws):
         if div is None:
             skipped += values[("all", "sales", "this")] or 0.0
             continue
-        key = (row[0].date(), div, text(row[4]), text(row[5]), text(row[6]))
+        key = (row[0].date(), div, text(row[4]), head_of(div, text(row[5])), text(row[6]))
         if key in out:
             raise SystemExit(f"{ws.title}: {key} appears twice")
         out[key] = values
@@ -171,7 +179,8 @@ def read_value_adj(path):
         if not isinstance(row[0], dt.datetime) or text(row[1]) in (None, "Total", "GRAND TOTAL"):
             continue
         same = sum(number(row[c]) or 0.0 for c in same_cols)
-        out.append((row[0].date(), text(row[1]), text(row[2]), text(row[3]), text(row[4]),
+        div = text(row[1])
+        out.append((row[0].date(), div, text(row[2]), head_of(div, text(row[3])), text(row[4]),
                     number(row[all_col]) or 0.0, same))
     wb.close()
     return out
