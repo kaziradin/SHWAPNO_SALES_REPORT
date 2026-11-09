@@ -10,6 +10,7 @@ import {
 } from "@/lib/daily";
 import DailyDetail from "./DailyDetail";
 import DayLines, { type DayPoint } from "./DayLines";
+import DayHeads, { type DayHeadRow } from "./DayHeads";
 
 const STORE_GROUP_LABEL: Record<StoreGroup, string> = { all: "All stores", same: "Same stores" };
 const TYPE_LABEL: Record<StoreType, string> = { all: "Own and franchise", own: "Own stores", fran: "Franchise stores" };
@@ -172,6 +173,18 @@ export default function Daily({ daily }: { daily: DailyData }) {
   const shownX = focusRow ? focusRow.x : totalX;
   const chartBand = focusRow ? { from: focus, to: focus } : band;
   const chartTotalLabel = focusRow ? "Selected day" : totalLabel;
+  // the head table under the charts: each head's figures for the chosen days, with the same filters as the tab
+  const headTable: DayHeadRow[] = g.heads
+    .filter((h) => !headSel || headKey(h) === headKey(headSel))
+    .flatMap((h) => {
+      const rs = fromRows ? rowsOfHead(h).filter((r) => (!crpSel || r.crp === crpSel) && (!catSel || r.category === catSel)) : [];
+      if (fromRows && rs.length === 0) return [];
+      const fields: DayFields = fromRows ? dayFieldsOfRows(rs, daily.days.length) : h;
+      const f = sumFigures(chosenIdx.map((i) => dayFigures(fields, i)));
+      return [{ division: h.division, role: h.role, head: h.head, f, x: ratiosOf(f) }];
+    })
+    .sort((a, b) => (b.f.sales ?? 0) - (a.f.sales ?? 0));
+  const headTotalLabel = headSel ? "Total (selected head)" : fromRows ? "Total (filtered rows)" : "Total (all divisions)";
   const toggleFocus = (date: string) => setFocus((f) => (f === date ? "" : date));
   const colClass = (date: string) => [isFriSat(date) ? "wk" : "", date === focus ? "sel" : ""].filter(Boolean).join(" ") || undefined;
 
@@ -319,6 +332,14 @@ export default function Daily({ daily }: { daily: DailyData }) {
             total={{ now: shownX.goi, prev: shownX.splyGoi }} band={chartBand} totalLabel={chartTotalLabel} prevWord={CMP_WORD[cmp]} />
         </div>
       </div>
+
+      <div className="ov-section-head"><h2>Category heads</h2></div>
+      <p className="ov-note">
+        {selectionLabel}, {STORE_LABEL[group].toLowerCase()}, {periodName}, compared with {compareName}.
+        {!headSel && !fromRows && " The total covers every division, including sales with no head, so it can be a little above the sum of the heads."}
+      </p>
+      <DayHeads rows={headTable} total={{ f: total, x: totalX }} totalLabel={headTotalLabel} showFootfall={!fromRows}
+        cmpShort={CMP_SHORT[cmp]} caption={`Category heads for ${periodName}, ${STORE_LABEL[group].toLowerCase()}, vs ${CMP_SHORT[cmp]}.`} />
 
       <div className="ov-section-head"><h2>Day by day</h2></div>
       <div className="xbar"><ExportButton onClick={exportDays} /></div>
