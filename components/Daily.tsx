@@ -206,7 +206,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
       ]);
       formats.push(m.format, m.format, "pct");
     }
-    downloadExcel(`day-wise-sales-${group}.xlsx`, "Day wise sales", cols, body, formats);
+    downloadExcel(`day-wise-sales-${STORE_LABEL[group].toLowerCase().replace(/ /g, "-")}.xlsx`, "Day wise sales", cols, body, formats);
   };
 
   return (

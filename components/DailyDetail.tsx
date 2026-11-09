@@ -200,7 +200,7 @@ function DetailTable({ daily, detail, group, idx, label, compare, groupLabel, he
     const body: ExportCell[][] = filtered
       ? [...rowsOut, ["", "Total (filtered rows)", ...cells(rowsTotal)]]
       : [...rowsOut, ["", "Grand total (all divisions)", ...cells(dayTotal)]];
-    downloadExcel(`day-wise-detail-${group}${filtered ? "-filtered" : ""}.xlsx`, "Day wise detail", cols, body);
+    downloadExcel(`day-wise-detail-${groupLabel.replace(/ /g, "-")}${filtered ? "-filtered" : ""}.xlsx`, "Day wise detail", cols, body);
   };
 
   return (
