@@ -333,6 +333,20 @@ td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .ov-kpi .ov-chg.up { color: #5fdc8f; }
 .ov-kpi .ov-chg.down { color: #ff8a80; }
 .ov-kpi .ov-chg.flat { color: #9fb4cf; }
+/* Day wise sales: the head table is smaller, and its first three columns (division, role, head) stay in view
+   when the table is scrolled sideways */
+.dh { font-size: 12px; }
+.dh th, .dh td { padding: 6px 8px; }
+.dh thead th { font-size: 11.5px; }
+.dh .dh-c1, .dh .dh-c2, .dh .dh-c3, .dh .dh-foot { position: sticky; z-index: 2; background: #fff; }
+.dh thead th.dh-c1, .dh thead th.dh-c2, .dh thead th.dh-c3 { background: #F6F8FB; z-index: 3; }
+.dh tfoot th.dh-foot { background: #F9FAFC; left: 0; z-index: 2; }
+.dh .dh-c1 { left: 0; width: 46px; min-width: 46px; max-width: 46px; text-align: left; font-weight: 600; color: #1f3a5f; }
+.dh .dh-c2 { left: 46px; width: 150px; min-width: 150px; max-width: 150px; text-align: left; white-space: normal; line-height: 1.3; }
+.dh .dh-c3 { left: 196px; width: 150px; min-width: 150px; max-width: 150px; text-align: left; white-space: normal; line-height: 1.3; font-weight: 600; }
+.dh .dh-c3 { box-shadow: 4px 0 6px -4px rgba(15, 39, 68, 0.22); }
+.dh thead th.dh-c3 { box-shadow: 4px 0 6px -4px rgba(15, 39, 68, 0.22); }
+
 /* Day wise sales: a compact KPI band (the Overview keeps its larger cards) */
 .day-kpis { padding: 8px; gap: 6px; margin-bottom: 10px; border-radius: 10px; }
 .day-kpis .ov-kpi { padding: 7px 10px; border-radius: 8px; }

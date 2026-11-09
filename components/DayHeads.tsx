@@ -2,7 +2,7 @@
 
 import { Fragment } from "react";
 import type { HeadRow } from "@/lib/types";
-import { roleName } from "@/lib/format";
+import { abbrOf, roleName } from "@/lib/format";
 import type { Figures, Ratios } from "@/lib/daily";
 import { WIDE, WideCells } from "./HeadMeasures";
 
@@ -32,13 +32,13 @@ export default function DayHeads({ rows, total, totalLabel, showFootfall, cmpSho
   return (
     <div className="ov-panel ov-table-panel">
       <div className="ov-table-scroll">
-        <table className="ov-table">
+        <table className="ov-table dh">
           <caption>{caption}</caption>
           <thead>
             <tr>
-              <th scope="col" className="l">Division</th>
-              <th scope="col" className="l">Category role</th>
-              <th scope="col" className="l">Head</th>
+              <th scope="col" className="l dh-c1" title="Division">Div</th>
+              <th scope="col" className="l dh-c2" title="Category role">Role</th>
+              <th scope="col" className="l dh-c3">Head</th>
               {shown.map((m) => (
                 <Fragment key={m.label}>
                   <th scope="col">{m.label} this</th>
@@ -52,9 +52,9 @@ export default function DayHeads({ rows, total, totalLabel, showFootfall, cmpSho
           <tbody>
             {rows.map((r) => (
               <tr key={r.division + r.head}>
-                <td className="l" style={{ textAlign: "left" }}>{r.division}</td>
-                <td className="l" style={{ textAlign: "left" }}>{roleName(r.role)}</td>
-                <th scope="row" style={{ textAlign: "left" }}>{r.head}</th>
+                <td className="l dh-c1" title={r.division}>{abbrOf(r.division)}</td>
+                <td className="l dh-c2">{roleName(r.role)}</td>
+                <th scope="row" className="l dh-c3">{r.head}</th>
                 {shown.map((m) => <WideCells key={m.label} m={m} r={asHeadRow(r.f, r.x)} />)}
               </tr>
             ))}
@@ -62,7 +62,7 @@ export default function DayHeads({ rows, total, totalLabel, showFootfall, cmpSho
           {rows.length > 0 && (
             <tfoot>
               <tr>
-                <th scope="row" colSpan={3} style={{ textAlign: "left" }}>{totalLabel}</th>
+                <th scope="row" colSpan={3} className="l dh-foot">{totalLabel}</th>
                 {shown.map((m) => <WideCells key={m.label} m={m} r={asHeadRow(total.f, total.x)} />)}
               </tr>
             </tfoot>
