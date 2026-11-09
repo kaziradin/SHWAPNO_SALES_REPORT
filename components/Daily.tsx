@@ -11,6 +11,7 @@ import {
 import DailyDetail from "./DailyDetail";
 import DayLines, { type DayPoint } from "./DayLines";
 import DayHeads, { DayHeadDrill, type DayCrpRow, type DayHeadRow } from "./DayHeads";
+import DayByHead from "./DayByHead";
 
 const STORE_GROUP_LABEL: Record<StoreGroup, string> = { all: "All stores", same: "Same stores" };
 const TYPE_LABEL: Record<StoreType, string> = { all: "Own and franchise", own: "Own stores", fran: "Franchise stores" };
@@ -372,6 +373,10 @@ export default function Daily({ daily }: { daily: DailyData }) {
           cmpShort={CMP_SHORT[cmp]} caption={`Category heads for ${periodName}, ${STORE_LABEL[group].toLowerCase()}, vs ${CMP_SHORT[cmp]}.`}
           onOpen={setOpenHead} />
       )}
+
+      <div className="ov-section-head"><h2>Day by day, by head</h2></div>
+      <DayByHead heads={g.heads} totalF={g.total} detailRows={detailRows(group) ?? []} days={daily.days} cmpShort={CMP_SHORT[cmp]}
+        scope={`${STORE_LABEL[group].toLowerCase()}, each day of ${daily.periodLabel}, vs ${CMP_SHORT[cmp]}`} />
 
       <div className="ov-section-head"><h2>Day by day</h2></div>
       <div className="xbar"><ExportButton onClick={exportDays} /></div>

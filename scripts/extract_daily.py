@@ -64,7 +64,7 @@ VA_PARTS_OF = {
     "same": ("sameOwn", "sameFran"), "sameOwn": ("sameOwn",), "sameFran": ("sameFran",),
 }
 OUTPUT = ("sales", "splySales", "gpv", "splyGpv", "valueAdj", "splyValueAdj", "ff", "splyFf")
-DETAIL_FIELDS = ("sales", "splySales", "gpv", "splyGpv", "valueAdj", "splyValueAdj")
+DETAIL_FIELDS = ("sales", "splySales", "gpv", "splyGpv", "valueAdj", "splyValueAdj", "ff", "splyFf")
 # The day-wise report names the LIFESTYLE head 'Ms. Adiba'; the monthly report and the head list use
 # Md. Hasib-Ul-Alam, so the day-wise name is changed to that. Keyed by division, so other heads are unaffected.
 HEAD_NAMES = {("LIFESTYLE", "Ms. Adiba"): "Md. Hasib-Ul-Alam"}
@@ -350,6 +350,9 @@ def build_variant(cmp, days, totals, heads, head_order, leaves, va_this, va_prev
                 vals["splyGpv"].append(product(ss, sgp))
                 vals["valueAdj"].append(va_value(va_this["crp"], (d, *key), g))
                 vals["splyValueAdj"].append(va_value(va_prev["crp"], (prev_date[d], *key), g))
+                # footfall is valid on a category row (one person, one category); the page does not add it up across rows
+                vals["ff"].append(leaf.get((g, "ff", tp)))
+                vals["splyFf"].append(leaf.get((g, "ff", cmp)))
             if not any(v for values in vals.values() for v in values if v):
                 continue
             rows.append({"division": div, "category": cat, "head": hd, "crp": c,

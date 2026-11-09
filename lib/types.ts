@@ -78,7 +78,7 @@ export type DailyHead = DayFields & { division: string; role: string; head: stri
 
 /** One row of the day-wise detail. The rows add up to the total without subtotals: a division row
  *  (no category), a category row (no head), or a CRP row under a head. Footfall is left out. */
-export type DetailRow = Pick<DayFields, "sales" | "splySales" | "gpv" | "splyGpv" | "valueAdj" | "splyValueAdj"> & {
+export type DetailRow = Pick<DayFields, "sales" | "splySales" | "gpv" | "splyGpv" | "valueAdj" | "splyValueAdj" | "ff" | "splyFf"> & {
   division: string; category: string | null; head: string | null; crp: string | null;
 };
 
