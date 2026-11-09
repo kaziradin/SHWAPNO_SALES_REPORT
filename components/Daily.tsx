@@ -183,7 +183,8 @@ export default function Daily({ daily }: { daily: DailyData }) {
       const f = sumFigures(chosenIdx.map((i) => dayFigures(fields, i)));
       return [{ division: h.division, role: h.role, head: h.head, f, x: ratiosOf(f) }];
     })
-    .sort((a, b) => (b.f.sales ?? 0) - (a.f.sales ?? 0));
+    // the divisions in the order the detail table lists them, and the heads alphabetically within each
+    .sort((a, b) => SHOWN_DIVISIONS.indexOf(a.division) - SHOWN_DIVISIONS.indexOf(b.division) || a.head.localeCompare(b.head));
   const headTotalLabel = headSel ? "Total (selected head)" : fromRows ? "Total (filtered rows)" : "Total (all divisions)";
   const toggleFocus = (date: string) => setFocus((f) => (f === date ? "" : date));
   const colClass = (date: string) => [isFriSat(date) ? "wk" : "", date === focus ? "sel" : ""].filter(Boolean).join(" ") || undefined;

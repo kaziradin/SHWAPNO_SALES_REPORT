@@ -2,7 +2,6 @@
 
 import { Fragment } from "react";
 import type { HeadRow } from "@/lib/types";
-import { abbrOf, roleName } from "@/lib/format";
 import type { Figures, Ratios } from "@/lib/daily";
 import { WIDE, WideCells } from "./HeadMeasures";
 
@@ -36,8 +35,8 @@ export default function DayHeads({ rows, total, totalLabel, showFootfall, cmpSho
           <caption>{caption}</caption>
           <thead>
             <tr>
-              <th scope="col" className="l dh-c1" title="Division">Div</th>
-              <th scope="col" className="l dh-c2" title="Category role">Role</th>
+              <th scope="col" className="l dh-c1">Division</th>
+              <th scope="col" className="l dh-c2">Category role</th>
               <th scope="col" className="l dh-c3">Head</th>
               {shown.map((m) => (
                 <Fragment key={m.label}>
@@ -52,8 +51,8 @@ export default function DayHeads({ rows, total, totalLabel, showFootfall, cmpSho
           <tbody>
             {rows.map((r) => (
               <tr key={r.division + r.head}>
-                <td className="l dh-c1" title={r.division}>{abbrOf(r.division)}</td>
-                <td className="l dh-c2">{roleName(r.role)}</td>
+                <td className="l dh-c1">{r.division}</td>
+                <td className="l dh-c2">{r.role}</td>
                 <th scope="row" className="l dh-c3">{r.head}</th>
                 {shown.map((m) => <WideCells key={m.label} m={m} r={asHeadRow(r.f, r.x)} />)}
               </tr>
