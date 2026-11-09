@@ -38,10 +38,32 @@ export default function DayLines({ title, kind, points, total, band, totalLabel 
   // label every day when there is room, otherwise every second, third... day; the last day is always labelled
   const step = Math.max(1, Math.ceil(n / Math.max(1, Math.floor(plotW / 24))));
   const lastIdx = points.length - 1;
-  // a value is written beside every day when there is room; with more days, every second, third... day (the last always)
-  const valueEvery = Math.max(1, Math.ceil((kind === "money" ? 56 : 44) / (plotW / n)));
-  // the higher of a day's two values is labelled above its point and the lower one below, so the labels do not run together
+  // The value labels. The higher of a day's two values sits above its point and the lower one below. This month's values
+  // are placed first (the last day first of all), then last year's; a label that would run into one already placed is
+  // skipped, so no two numbers overlap.
   const nowAbove = points.map((p) => p.now == null || p.prev == null || p.now >= p.prev);
+  const labelBoxes: { x0: number; x1: number; y0: number; y1: number }[] = [];
+  const fits = (text: string, cx: number, base: number, size: number) => {
+    const half = (text.length * size * 0.6) / 2 + 2;
+    const box = { x0: cx - half, x1: cx + half, y0: base - size, y1: base + 3 };
+    if (labelBoxes.some((b) => box.x0 < b.x1 && box.x1 > b.x0 && box.y0 < b.y1 && box.y1 > b.y0)) return false;
+    labelBoxes.push(box);
+    return true;
+  };
+  const order = [lastIdx, ...points.map((_, i) => i).filter((i) => i !== lastIdx)].filter((i) => i >= 0);
+  const valueLabels: { key: string; x: number; y: number; text: string; now: boolean }[] = [];
+  for (const i of order) {
+    const p = points[i];
+    if (p.now == null) continue;
+    const text = fmt(p.now), cy = nowAbove[i] ? y(p.now) - 8 : y(p.now) + 14;
+    if (fits(text, x(i), cy, 10.5)) valueLabels.push({ key: `n${i}`, x: x(i), y: cy, text, now: true });
+  }
+  for (const i of order) {
+    const p = points[i];
+    if (p.prev == null) continue;
+    const text = fmt(p.prev), cy = nowAbove[i] ? y(p.prev) + 14 : y(p.prev) - 8;
+    if (fits(text, x(i), cy, 10)) valueLabels.push({ key: `p${i}`, x: x(i), y: cy, text, now: false });
+  }
   const ticks = [hi0, (hi0 + lo0) / 2, lo0];
 
   const indexAt = (clientX: number) => {
@@ -111,15 +133,13 @@ export default function DayLines({ title, kind, points, total, band, totalLabel 
               {(i % step === 0 || i === lastIdx) && (
                 <text x={x(i)} y={H - 8} textAnchor="middle" fontSize={11} className="ov-col-name">{dayNum(p.date)}</text>
               )}
-              {p.now != null && (i % valueEvery === 0 || i === lastIdx) && (
-                <text x={x(i)} y={nowAbove[i] ? y(p.now) - 8 : y(p.now) + 14} textAnchor="middle" fontSize={10.5} fontWeight={600} pointerEvents="none"
-                  style={{ fill: "var(--this)" }}>{fmt(p.now)}</text>
-              )}
-              {p.prev != null && (i % valueEvery === 0 || i === lastIdx) && (
-                <text x={x(i)} y={nowAbove[i] ? y(p.prev) + 14 : y(p.prev) - 8} textAnchor="middle" fontSize={10} pointerEvents="none"
-                  style={{ fill: "#6b7a90" }}>{fmt(p.prev)}</text>
-              )}
             </g>
+          ))}
+          {valueLabels.map((l) => (
+            <text key={l.key} x={l.x} y={l.y} textAnchor="middle" pointerEvents="none"
+              fontSize={l.now ? 10.5 : 10} fontWeight={l.now ? 600 : 400} style={{ fill: l.now ? "var(--this)" : "#6b7a90" }}>
+              {l.text}
+            </text>
           ))}
           {/* one layer over the whole plot: the nearest day is read from the pointer position */}
           <rect x={left} y={0} width={plotW} height={H} fill="transparent" onMouseMove={onMove} onMouseLeave={onLeave} />
