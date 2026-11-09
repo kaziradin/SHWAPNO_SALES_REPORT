@@ -82,6 +82,8 @@ body {
 .top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
 .top h1 { font-size: 22px; font-weight: 650; margin: 0 0 2px; letter-spacing: -0.01em; }
 .top .sub { color: var(--ink-2); font-size: 13px; }
+/* the title and the "Till ..." line sit on one line; the line wraps only on a narrow screen */
+.top > div:first-child { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 14px; row-gap: 2px; }
 .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 
 .seg { display: inline-flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 2px; }
