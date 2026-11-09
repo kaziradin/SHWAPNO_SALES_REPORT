@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { DailyData, DailyDetailData, DailyHead, DayFields } from "@/lib/types";
+import type { DailyData, DailyDetailData, DailyHead, DayFields, StoreKey } from "@/lib/types";
 import { abbrOf, arrowOf, crFmt, crOrDash, crSigned, full, growth, pct, roleName, signedPct, titleCase, toneOfNum } from "@/lib/format";
 import { downloadExcel, ExportButton, type ExportCell, type ExportCol } from "@/lib/export";
 import {
   Cell, dayFieldsOfRows, dayLong, dayMonth, dayWeekday, difference, diffChg, Figures, growthChg, isFriSat, MTD, Ratios, ratiosOf,
-  SHOWN_DIVISIONS, STORE_LABEL, storeKey, StoreGroup, StoreType, sumFigures, uniqSorted,
+  CMP_SHORT, CMP_WORD, Cmp, SHOWN_DIVISIONS, STORE_LABEL, storeKey, StoreGroup, StoreType, sumFigures, uniqSorted,
 } from "@/lib/daily";
 import DailyDetail from "./DailyDetail";
 import DayLines, { type DayPoint } from "./DayLines";
@@ -17,7 +17,8 @@ const TOTAL = "total";
 /** The Period choice that takes the dates typed in From and To. */
 const RANGE = "range";
 
-type DayRow = { date: string; sply: string; f: Figures; x: Ratios };
+/** A day of the month: its figures, and the date of the comparison day (last year's or last month's). */
+type DayRow = { date: string; prev: string; f: Figures; x: Ratios };
 
 /** One row of the day table: a measure, with this month's and last year's value for any day or the whole period. */
 type Metric = {
@@ -62,7 +63,7 @@ const headLabel = (h: { division: string; role: string; head: string }) => `${ab
 const seriesOf = (rows: DayRow[], pick: (r: DayRow) => [number | null, number | null]): DayPoint[] =>
   rows.map((r) => {
     const [now, prev] = pick(r);
-    return { date: r.date, sply: r.sply, now, prev };
+    return { date: r.date, sply: r.prev, now, prev };
   });
 
 export default function Daily({ daily }: { daily: DailyData }) {
@@ -76,6 +77,8 @@ export default function Daily({ daily }: { daily: DailyData }) {
   const [type, setType] = useState<StoreType>("all");
   // the data group the figures come from: all stores, same stores, or their own or franchise stores
   const group = storeKey(store, type);
+  // the figures are compared with the same day last year (SPLY) or the same day last month (SPLM)
+  const [cmp, setCmp] = useState<Cmp>("sply");
   const [head, setHead] = useState<string>(TOTAL);
   const [crp, setCrp] = useState("");
   const [cat, setCat] = useState("");
@@ -91,12 +94,14 @@ export default function Daily({ daily }: { daily: DailyData }) {
     return () => { live = false; };
   }, []);
 
-  const g = daily.groups[group];
+  const variant = cmp === "sply" ? daily.groups : daily.splmGroups;
+  const g = variant[group];
+  const detailRows = (k: StoreKey) => (cmp === "sply" ? detail?.groups[k] : detail?.splmGroups[k]);
   const picked = g.heads.find((h) => headKey(h) === head);
   const headSel: DailyHead | null = head === TOTAL || !picked ? null : picked;
   // detail rows of the listed divisions, for the CRP and category lists and for the figures when either is chosen
   const listedRows = (rs: DailyDetailData["groups"]["all"] | undefined) => (rs ?? []).filter((r) => SHOWN_DIVISIONS.includes(r.division));
-  const rowsOfHead = (h: DailyHead | null, rs = listedRows(detail?.groups[group])) =>
+  const rowsOfHead = (h: DailyHead | null, rs = listedRows(detailRows(group))) =>
     (h ? rs.filter((r) => r.division === h.division && r.head === h.head) : rs);
   const headRows = rowsOfHead(headSel);
   // a CRP belongs to a head and the CRP and category lists narrow each other, so a choice always has rows behind it;
@@ -123,14 +128,20 @@ export default function Daily({ daily }: { daily: DailyData }) {
   const onGroup = (nextStore: StoreGroup, nextType: StoreType) => {
     setStore(nextStore);
     setType(nextType);
-    const rs = listedRows(detail?.groups[storeKey(nextStore, nextType)]);
+    const rs = listedRows(detailRows(storeKey(nextStore, nextType)));
+    if (crpSel && !rs.some((r) => r.crp === crpSel)) setCrp("");
+    if (catSel && !rs.some((r) => r.category === catSel)) setCat("");
+  };
+  const onCmp = (next: Cmp) => {
+    setCmp(next);
+    const rs = listedRows(next === "sply" ? detail?.groups[group] : detail?.splmGroups[group]);
     if (crpSel && !rs.some((r) => r.crp === crpSel)) setCrp("");
     if (catSel && !rs.some((r) => r.category === catSel)) setCat("");
   };
 
   const rows: DayRow[] = daily.days.map((d, i) => {
     const f = dayFigures(source, i);
-    return { date: d.date, sply: d.sply, f, x: ratiosOf(f) };
+    return { date: d.date, prev: cmp === "sply" ? d.sply : d.splm, f, x: ratiosOf(f) };
   });
   // the days the Period choice covers: the whole month so far, one day, or the dates from From to To in either order
   const lo = from <= to ? from : to, hi = from <= to ? to : from;
@@ -151,7 +162,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
     : period === RANGE ? `${dayLong(lo)} to ${dayLong(hi)}`
     : dayLong(period);
   // last year's days matched with the chosen days, as the workbook matches them
-  const splys = chosen.map((r) => r.sply).sort();
+  const splys = chosen.map((r) => r.prev).sort();
   const compareName = chosen.length === 1 ? dayLong(splys[0])
     : chosen.length === 0 ? "no matched days"
     : `the matched days of ${dayMonth(splys[0])} to ${dayMonth(splys[splys.length - 1])} ${splys[0].slice(0, 4)}`;
@@ -174,11 +185,11 @@ export default function Daily({ daily }: { daily: DailyData }) {
   };
   const cr = (v: number | null) => (v == null ? "–" : crFmt(v));
   const kpi = [
-    { label: "Sales", value: cr(shownF.sales), sply: `SPLY: ${cr(shownF.splySales)}`, ...moneyDelta(shownF.sales, shownF.splySales) },
-    { label: "GP%", value: pct(shownX.gp, 2), sply: `SPLY: ${pct(shownX.splyGp, 2)}`, ...pointDelta(shownX.gp, shownX.splyGp) },
-    { label: "GPV", value: cr(shownF.gpv), sply: `SPLY: ${cr(shownF.splyGpv)}`, ...moneyDelta(shownF.gpv, shownF.splyGpv) },
-    { label: "GP+OI%", value: pct(shownX.goi, 2), sply: `SPLY: ${pct(shownX.splyGoi, 2)}`, ...pointDelta(shownX.goi, shownX.splyGoi) },
-    { label: "GPV+OI", value: cr(shownF.gpvOi), sply: `SPLY: ${cr(shownF.splyGpvOi)}`, ...moneyDelta(shownF.gpvOi, shownF.splyGpvOi) },
+    { label: "Sales", value: cr(shownF.sales), sply: `${CMP_SHORT[cmp]}: ${cr(shownF.splySales)}`, ...moneyDelta(shownF.sales, shownF.splySales) },
+    { label: "GP%", value: pct(shownX.gp, 2), sply: `${CMP_SHORT[cmp]}: ${pct(shownX.splyGp, 2)}`, ...pointDelta(shownX.gp, shownX.splyGp) },
+    { label: "GPV", value: cr(shownF.gpv), sply: `${CMP_SHORT[cmp]}: ${cr(shownF.splyGpv)}`, ...moneyDelta(shownF.gpv, shownF.splyGpv) },
+    { label: "GP+OI%", value: pct(shownX.goi, 2), sply: `${CMP_SHORT[cmp]}: ${pct(shownX.splyGoi, 2)}`, ...pointDelta(shownX.goi, shownX.splyGoi) },
+    { label: "GPV+OI", value: cr(shownF.gpvOi), sply: `${CMP_SHORT[cmp]}: ${cr(shownF.splyGpvOi)}`, ...moneyDelta(shownF.gpvOi, shownF.splyGpvOi) },
   ];
 
   const shown = (m: Metric, v: number | null) => (m.kind === "ratio" ? pct(v, 2) : m.crore ? crOrDash(v) : full(v));
@@ -194,12 +205,12 @@ export default function Daily({ daily }: { daily: DailyData }) {
     const all = [...chosen.map((r) => ({ f: r.f, x: r.x })), ...(withTotal ? [{ f: total, x: totalX }] : [])];
     const body: ExportCell[][] = [
       ["Day", "", ...chosen.map((r) => dayWeekday(r.date)), ...(withTotal ? [""] : [])],
-      ["Compared with", "Same day last year", ...chosen.map((r) => dayLong(r.sply)), ...(withTotal ? [""] : [])],
+      ["Compared with", `Same day ${CMP_WORD[cmp]}`, ...chosen.map((r) => dayLong(r.prev)), ...(withTotal ? [""] : [])],
     ];
     const formats: ExportCol["format"][] = ["text", "text"];
     for (const m of metrics) {
       body.push([m.label, "This month", ...all.map(({ f, x }) => m.now(f, x))]);
-      body.push([m.label, "Same day last year", ...all.map(({ f, x }) => m.prev(f, x))]);
+      body.push([m.label, `Same day ${CMP_WORD[cmp]}`, ...all.map(({ f, x }) => m.prev(f, x))]);
       body.push([
         m.label, m.kind === "ratio" ? "Change" : "Growth",
         ...all.map(({ f, x }) => (m.kind === "ratio" ? difference(m.now(f, x), m.prev(f, x)) : growth(m.now(f, x), m.prev(f, x)))),
@@ -212,6 +223,14 @@ export default function Daily({ daily }: { daily: DailyData }) {
   return (
     <div className="ov">
       <div className="drill-filters day-filters">
+        <div className="fbar-field">
+          <span>Compare with</span>
+          <div className="seg" role="group" aria-label="Comparison period">
+            {(["sply", "splm"] as Cmp[]).map((c) => (
+              <button key={c} type="button" aria-pressed={cmp === c} onClick={() => onCmp(c)}>vs {CMP_SHORT[c]}</button>
+            ))}
+          </div>
+        </div>
         <label>Period
           <select value={period} onChange={(e) => { setPeriod(e.target.value); setFocus(""); }} aria-label="Period">
             <option value={MTD}>Month to date ({daily.periodLabel})</option>
@@ -241,7 +260,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
             {(Object.keys(TYPE_LABEL) as StoreType[]).map((k) => <option key={k} value={k}>{TYPE_LABEL[k]}</option>)}
           </select>
         </label>
-        <label>Category head
+        <label className="day-head">Category head
           <select value={head} onChange={(e) => onHead(e.target.value)} aria-label="Category head">
             <option value={TOTAL}>All category heads</option>
             {g.heads.map((h) => <option key={headKey(h)} value={headKey(h)}>{headLabel(h)}</option>)}
@@ -273,7 +292,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
       </section>
       <p className="ov-note">
         {selectionLabel}, {STORE_LABEL[group].toLowerCase()}, {periodName}.{" "}
-        {chosen.length ? "Each day is compared with the same day last year." : "No days fall in this range; choose dates inside the data period."}
+        {chosen.length ? `Each day is compared with the same day ${CMP_WORD[cmp]}.` : "No days fall in this range; choose dates inside the data period."}
         {period === RANGE && from > to && " The two dates were swapped, so the range runs from the earlier to the later date."}
         {fromRows && " Footfall and basket are hidden when a CRP or category is chosen: a bill with items from several categories would be counted more than once."}
       </p>
@@ -286,18 +305,18 @@ export default function Daily({ daily }: { daily: DailyData }) {
 
       <div className="day-charts">
         <DayLines title="Day wise sales" kind="money" points={seriesOf(rows, (r) => [r.f.sales, r.f.splySales])}
-          total={{ now: shownF.sales, prev: shownF.splySales }} band={chartBand} totalLabel={chartTotalLabel} />
+          total={{ now: shownF.sales, prev: shownF.splySales }} band={chartBand} totalLabel={chartTotalLabel} prevWord={CMP_WORD[cmp]} />
         <div className="day-pair">
           <DayLines title="Day wise GPV" kind="money" points={seriesOf(rows, (r) => [r.f.gpv, r.f.splyGpv])}
-            total={{ now: shownF.gpv, prev: shownF.splyGpv }} band={chartBand} totalLabel={chartTotalLabel} />
+            total={{ now: shownF.gpv, prev: shownF.splyGpv }} band={chartBand} totalLabel={chartTotalLabel} prevWord={CMP_WORD[cmp]} />
           <DayLines title="Day wise GPV+OI" kind="money" points={seriesOf(rows, (r) => [r.f.gpvOi, r.f.splyGpvOi])}
-            total={{ now: shownF.gpvOi, prev: shownF.splyGpvOi }} band={chartBand} totalLabel={chartTotalLabel} />
+            total={{ now: shownF.gpvOi, prev: shownF.splyGpvOi }} band={chartBand} totalLabel={chartTotalLabel} prevWord={CMP_WORD[cmp]} />
         </div>
         <div className="day-pair">
           <DayLines title="Day wise GP%" kind="pct" points={seriesOf(rows, (r) => [r.x.gp, r.x.splyGp])}
-            total={{ now: shownX.gp, prev: shownX.splyGp }} band={chartBand} totalLabel={chartTotalLabel} />
+            total={{ now: shownX.gp, prev: shownX.splyGp }} band={chartBand} totalLabel={chartTotalLabel} prevWord={CMP_WORD[cmp]} />
           <DayLines title="Day wise GP+OI%" kind="pct" points={seriesOf(rows, (r) => [r.x.goi, r.x.splyGoi])}
-            total={{ now: shownX.goi, prev: shownX.splyGoi }} band={chartBand} totalLabel={chartTotalLabel} />
+            total={{ now: shownX.goi, prev: shownX.splyGoi }} band={chartBand} totalLabel={chartTotalLabel} prevWord={CMP_WORD[cmp]} />
         </div>
       </div>
 
@@ -307,7 +326,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
         <div className="ov-table-scroll">
           <table className="ov-table day-wide">
             <caption>
-              {selectionLabel}, {STORE_LABEL[group].toLowerCase()}, {periodName}. Each day against the same day last year.
+              {selectionLabel}, {STORE_LABEL[group].toLowerCase()}, {periodName}. {`Each day against the same day ${CMP_WORD[cmp]}.`}
               Click a day or any number in its column to show that day in the KPIs and charts; click it again to go back.
               Friday and Saturday are shaded.
             </caption>
@@ -315,7 +334,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
               <tr>
                 <th scope="col">Measure</th>
                 {chosen.map((r) => (
-                  <th key={r.date} scope="col" className={colClass(r.date)} title={`Compared with ${dayLong(r.sply)}`}>
+                  <th key={r.date} scope="col" className={colClass(r.date)} title={`Compared with ${dayLong(r.prev)}`}>
                     <button type="button" className="daypick" onClick={() => toggleFocus(r.date)} aria-pressed={focus === r.date}>
                       {dayMonth(r.date)}
                       <span className="sub" style={{ display: "block" }}>{dayWeekday(r.date)}</span>
@@ -343,7 +362,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
         </div>
       </div>
 
-      <DailyDetail daily={daily} group={group} detail={detail} chosen={chosenIdx} label={periodName} compare={compareName}
+      <DailyDetail daily={daily} group={group} cmp={cmp} detail={detail} chosen={chosenIdx} label={periodName} compare={compareName}
         head={headSel} crp={crpSel} cat={catSel} />
     </div>
   );

@@ -21,6 +21,11 @@ export function storeKey(store: StoreGroup, type: StoreType): StoreKey {
   return `${store}${type === "own" ? "Own" : "Fran"}` as StoreKey;
 }
 
+/** The comparison: the same day last year (SPLY) or the same day last month (SPLM). */
+export type Cmp = "sply" | "splm";
+export const CMP_SHORT: Record<Cmp, string> = { sply: "SPLY", splm: "SPLM" };
+export const CMP_WORD: Record<Cmp, string> = { sply: "last year", splm: "last month" };
+
 /** The divisions the detail table lists, in this order. The others are left out; the grand total still includes them. */
 export const SHOWN_DIVISIONS = ["COMPANY GOODS", "PACKED COMMODITY", "LOOSE COMMODITY", "FRESH PRODUCE", "GENERAL MERCHANDISE", "LIFESTYLE"];
 

@@ -6,7 +6,7 @@ import { crOrDash, growth, pct, titleCase } from "@/lib/format";
 import { downloadExcel, ExportButton, type ExportCell, type ExportCol } from "@/lib/export";
 import {
   Cell, dayLong, dayMonth, difference, diffChg, Figures, growthChg, MTD, ratiosOf, SHOWN_DIVISIONS, SortState, SortTh, STORE_LABEL,
-  sumFigures,
+  sumFigures, type Cmp,
 } from "@/lib/daily";
 
 type Amounts = Pick<DayFields, "sales" | "splySales" | "gpv" | "splyGpv" | "valueAdj" | "splyValueAdj">;
@@ -105,8 +105,8 @@ function shownName(n: Node): string {
 }
 
 /** The detail table. The period, store group, category head, CRP and category come from the filters at the top of the tab. */
-export default function DailyDetail({ daily, group, detail, chosen, label, compare, head, crp, cat }: {
-  daily: DailyData; group: Group; detail: DailyDetailData | null; chosen: number[]; label: string; compare: string;
+export default function DailyDetail({ daily, group, cmp, detail, chosen, label, compare, head, crp, cat }: {
+  daily: DailyData; group: Group; cmp: Cmp; detail: DailyDetailData | null; chosen: number[]; label: string; compare: string;
   head: DailyHead | null; crp: string; cat: string;
 }) {
   const [sort, setSort] = useState<Sort>({ key: "sales", dir: "desc" });
@@ -137,7 +137,7 @@ export default function DailyDetail({ daily, group, detail, chosen, label, compa
         <p className="hint">Loading the detail…</p>
       ) : (
         <DetailTable
-          daily={daily} detail={detail} group={group} idx={idx} label={label} compare={compare} groupLabel={groupLabel}
+          daily={daily} detail={detail} group={group} cmp={cmp} idx={idx} label={label} compare={compare} groupLabel={groupLabel}
           head={head} crp={crp} cat={cat} sort={sort} onSort={onSort} open={open} toggle={toggle} setOpen={setOpen}
         />
       )}
@@ -145,13 +145,13 @@ export default function DailyDetail({ daily, group, detail, chosen, label, compa
   );
 }
 
-function DetailTable({ daily, detail, group, idx, label, compare, groupLabel, head, crp, cat, sort, onSort, open, toggle, setOpen }: {
-  daily: DailyData; detail: DailyDetailData; group: Group; idx: number[]; label: string; compare: string; groupLabel: string;
+function DetailTable({ daily, detail, group, cmp, idx, label, compare, groupLabel, head, crp, cat, sort, onSort, open, toggle, setOpen }: {
+  daily: DailyData; detail: DailyDetailData; group: Group; cmp: Cmp; idx: number[]; label: string; compare: string; groupLabel: string;
   head: DailyHead | null; crp: string; cat: string; sort: Sort; onSort: (k: SortKey) => void;
   open: Set<string>; toggle: (id: string) => void; setOpen: (s: Set<string>) => void;
 }) {
   // the listed divisions' rows for the head, CRP and category chosen at the top
-  const rows = detail.groups[group].filter(
+  const rows = (cmp === "sply" ? detail.groups : detail.splmGroups)[group].filter(
     (r) => SHOWN_DIVISIONS.includes(r.division)
       && (!head || (r.division === head.division && r.head === head.head))
       && (!crp || r.crp === crp)
@@ -172,7 +172,7 @@ function DetailTable({ daily, detail, group, idx, label, compare, groupLabel, he
 
   // the grand total is the workbook's total for every division, including the ones not listed; with a filter on,
   // the total is of the listed rows that match
-  const dayTotal = periodFigures(daily.groups[group].total, idx);
+  const dayTotal = periodFigures((cmp === "sply" ? daily.groups : daily.splmGroups)[group].total, idx);
   const rowsTotal = sumFigures(tree.map((n) => n.figures));
   const dayX = ratiosOf(dayTotal);
   const rowsX = ratiosOf(rowsTotal);

@@ -89,7 +89,10 @@ export type DailyDetailData = {
   generatedAt: string;
   sourceFile: string;
   asOf: string;
+  /** Rows against the same day last year. */
   groups: Record<StoreKey, DetailRow[]>;
+  /** The same rows against the same day last month: the splySales and splyValueAdj fields are last month's. */
+  splmGroups: Record<StoreKey, DetailRow[]>;
 };
 
 export type DailyData = {
@@ -97,7 +100,10 @@ export type DailyData = {
   sourceFile: string;
   asOf: string;
   periodLabel: string;
-  /** The day of this month and the same day last year that the workbook compares it with. */
-  days: { date: string; sply: string }[];
+  /** The day of this month, and the same day last year and last month that the workbook compares it with. */
+  days: { date: string; sply: string; splm: string }[];
+  /** Against the same day last year. */
   groups: Record<StoreKey, { total: DayFields; heads: DailyHead[] }>;
+  /** Against the same day last month: the splySales and splyValueAdj fields are last month's. */
+  splmGroups: Record<StoreKey, { total: DayFields; heads: DailyHead[] }>;
 };

@@ -9,12 +9,14 @@ export type DayPoint = { date: string; sply: string; now: number | null; prev: n
 
 /** One line per series, one point per day: this month (navy) against the same day last year (grey).
  *  Money is in crore, ratios in percent. Move the pointer anywhere over the chart to read that day's figures. */
-export default function DayLines({ title, kind, points, total, band, totalLabel = "Month to date" }: {
+export default function DayLines({ title, kind, points, total, band, totalLabel = "Month to date", prevWord = "last year" }: {
   title: string; kind: "money" | "pct"; points: DayPoint[]; total: { now: number | null; prev: number | null };
   /** The days chosen in the Period list (one day or a date range), marked with a band. */
   band?: { from: string; to: string };
   /** What the summary line calls the chosen days. */
   totalLabel?: string;
+  /** The comparison period in words: "last year" or "last month". */
+  prevWord?: string;
 }) {
   const { show, hide, node } = useTooltip();
   const { ref, w } = useWidth(560);
@@ -50,7 +52,7 @@ export default function DayLines({ title, kind, points, total, band, totalLabel 
     const d = difference(p.now, p.prev);
     const rows: TipRow[] = [
       ["This day", p.now == null ? "–" : fmt(p.now)],
-      ["Same day last year", p.prev == null ? "–" : fmt(p.prev)],
+      [`Same day ${prevWord}`, p.prev == null ? "–" : fmt(p.prev)],
       ["Difference", d == null ? "–" : kind === "money" ? crSigned(d) : signedPct(d, 2)],
     ];
     if (kind === "money") rows.push(["Change", signedPct(growth(p.now, p.prev), 2)]);
@@ -76,17 +78,17 @@ export default function DayLines({ title, kind, points, total, band, totalLabel 
       <h3>{title}</h3>
       <div className="day-sum">
         <span>
-          {totalLabel} <b>{valueText(total.now)}</b> · same days last year <b>{valueText(total.prev)}</b> ·{" "}
+          {totalLabel} <b>{valueText(total.now)}</b> · same days {prevWord} <b>{valueText(total.prev)}</b> ·{" "}
           <span className={`delta ${toneOfNum(change)}`}>{signedPct(change, 2)}</span>
         </span>
         <span className="day-legend">
           <span><i className="sw sw-this" />This month</span>
-          <span><i className="sw sw-last" />Same day last year</span>
+          <span><i className="sw sw-last" />Same day {prevWord}</span>
         </span>
       </div>
       <div ref={ref}>
         <svg ref={svgRef} width={w} height={H} viewBox={`0 0 ${w} ${H}`} role="img"
-          aria-label={`${title}: this month against the same day last year`}>
+          aria-label={`${title}: this month against the same day ${prevWord}`}>
           {ticks.map((t, k) => (
             <g key={k}>
               <line x1={left} x2={w - right} y1={y(t)} y2={y(t)} className="ov-grid" />

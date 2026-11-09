@@ -1,22 +1,24 @@
 """Read the day-wise report and the value adj workbooks and write data/daily.json and data/daily-detail.json:
-this month day by day, each day next to the same day last year, per category head and in total, for every
-store group: all stores and same stores, each for own and franchise stores as well.
+this month day by day, per category head and in total, for every store group: all stores and same stores, each
+also for own and franchise stores.
+
+Each day is compared two ways:
+- groups: with the same day last year (SPLY). The fields named splySales, splyGpv, splyValueAdj and splyFf
+  are last year's figures.
+- splmGroups: with the same day last month (SPLM). The same field names hold last month's figures. For the same
+  stores the this-month figures change too, because the report and the value adj match the outlets to the
+  comparison's store list.
 
 Sources
 - Day Wise Sales GP Trend Report.xlsx (the newest file in ../1. SALES FILE whose name matches "Day wise Sales GP
-  Trend"): sales, GP% and footfall for this month (THIS) and last year (SPLY), in the day-only, division x head
-  and division x category x head x CRP sheets. The sheets' columns are read from their header rows.
-- Day Wise Val Adj.xlsx and Day Wise Val Adj SPLY.xlsx (in ../../val adj/autmation for day wise val adj): value adj
-  per day and CRP ("Summary Category" sheet). The SPLY file is keyed by the SPLY date.
-
-Groups (the keys of "groups" in both files)
-- all, same: all stores, and same stores (outlets trading in both periods).
-- allOwn, allFran, sameOwn, sameFran: the own and franchise stores of those groups.
+  Trend"): sales, GP% and footfall, in the day-only, division x head and division x category x head x CRP sheets.
+  The sheets' columns are read from their header rows.
+- Day Wise Val Adj.xlsx (this month), Day Wise Val Adj SPLY.xlsx (last year) and Day Wise Val Adj SPLM.xlsx (last
+  month), in ../../val adj/autmation for day wise val adj: value adj per day and CRP ("Summary Category" sheet).
+  The SPLY and SPLM files are keyed by their own dates.
 
 Figures
 - GPV = sales x GP%. Value adj is added for GP+OI: GPV+OI = GPV + value adj.
-- Value adj for same stores is the SPLY SAME OWN and SPLY SAME FRAN columns. For all stores, own is
-  SPLY SAME OWN + SPLY NEW OWN for this month, and the Total OWN column for last year (franchise likewise).
 - Footfall is not in the detail rows: a bill can span several categories, so it does not add up.
 
 Usage:  python scripts/extract_daily.py [path-to-report-xlsx]
@@ -35,6 +37,7 @@ SALES_FOLDER = ROOT.parent / "1. SALES FILE"
 VAL_FOLDER = ROOT.parent.parent / "val adj" / "autmation for day wise val adj"
 VAL_THIS = VAL_FOLDER / "Day Wise Val Adj.xlsx"
 VAL_SPLY = VAL_FOLDER / "Day Wise Val Adj SPLY.xlsx"
+VAL_SPLM = VAL_FOLDER / "Day Wise Val Adj SPLM.xlsx"
 REPORT_JSON = ROOT / "data" / "report.json"
 OUT = ROOT / "data" / "daily.json"
 DETAIL_OUT = ROOT / "data" / "daily-detail.json"
@@ -51,7 +54,10 @@ BLOCKS = {
 }
 GROUPS = tuple(BLOCKS.values())
 MEASURES = {"Revenue": "sales", "GP%": "gp", "FF": "ff"}
-PERIODS = {"THIS": "this", "THIS (vs SPLY)": "this", "SPLY": "sply"}
+# 'THIS (vs SPLM)' is this month's figure for the same stores against last month's list; the all-store
+# blocks have one THIS column, which is used for both comparisons.
+PERIODS = {"THIS": "this", "THIS (vs SPLY)": "this", "THIS (vs SPLM)": "this_splm", "SPLY": "sply", "SPLM": "splm"}
+COMPARISONS = ("sply", "splm")
 # Value adj parts (per CRP row) and which parts make up each group.
 VA_PARTS_OF = {
     "all": ("all",), "allOwn": ("allOwn",), "allFran": ("allFran",),
@@ -62,6 +68,42 @@ DETAIL_FIELDS = ("sales", "splySales", "gpv", "splyGpv", "valueAdj", "splyValueA
 # The day-wise report names the LIFESTYLE head 'Ms. Adiba'; the monthly report and the head list use
 # Md. Hasib-Ul-Alam, so the day-wise name is changed to that. Keyed by division, so other heads are unaffected.
 HEAD_NAMES = {("LIFESTYLE", "Ms. Adiba"): "Md. Hasib-Ul-Alam"}
+
+# Which Summary Category columns make up each value adj part of this month's rows, for each comparison.
+# The comparison decides which outlets count as same stores (in both periods) and which as new.
+THIS_VA_LAYOUT = {
+    "sply": {
+        "all": ("All Outlets",),
+        "allOwn": ("SPLY SAME OWN", "SPLY NEW OWN"),
+        "allFran": ("SPLY SAME FRAN", "SPLY NEW FRAN"),
+        "sameOwn": ("SPLY SAME OWN",),
+        "sameFran": ("SPLY SAME FRAN",),
+    },
+    "splm": {
+        "all": ("All Outlets",),
+        "allOwn": ("SPLM SAME OWN", "SPLM NEW OWN"),
+        "allFran": ("SPLM SAME FRAN", "SPLM NEW FRAN"),
+        "sameOwn": ("SPLM SAME OWN",),
+        "sameFran": ("SPLM SAME FRAN",),
+    },
+}
+# The value adj of the comparison period, from its own workbook (keyed by that period's date).
+PREV_VA_LAYOUT = {
+    "sply": {
+        "all": ("Grand Total",),
+        "allOwn": ("Total OWN",),
+        "allFran": ("Total FRAN",),
+        "sameOwn": ("SPLY SAME OWN",),
+        "sameFran": ("SPLY SAME FRAN",),
+    },
+    "splm": {
+        "all": ("SPLM Total",),
+        "allOwn": ("SPLM SAME OWN", "SPLM NEW OWN"),
+        "allFran": ("SPLM SAME FRAN", "SPLM NEW FRAN"),
+        "sameOwn": ("SPLM SAME OWN",),
+        "sameFran": ("SPLM SAME FRAN",),
+    },
+}
 
 
 def number(v):
@@ -86,6 +128,16 @@ def product(a, b):
 
 def head_of(division, head):
     return HEAD_NAMES.get((division, head), head)
+
+
+def periods_of(group):
+    """The periods a group has in the report: the same stores also have this month against last month's list."""
+    return ("this", "sply", "splm") + (("this_splm",) if group.startswith("same") else ())
+
+
+def this_period(group, cmp):
+    """The report's this-month period for a group under a comparison."""
+    return "this_splm" if cmp == "splm" and group.startswith("same") else "this"
 
 
 def find_day_wise(folder=SALES_FOLDER):
@@ -114,7 +166,7 @@ def columns(ws):
         measure, period = MEASURES.get(text(measure_row[i])), PERIODS.get(text(period_row[i]))
         if block and measure and period:
             found[(block, measure, period)] = i
-    needed = [(g, m, p) for g in GROUPS for m in MEASURES.values() for p in ("this", "sply")]
+    needed = [(g, m, p) for g in GROUPS for m in MEASURES.values() for p in periods_of(g)]
     missing = [k for k in needed if k not in found]
     if missing:
         raise SystemExit(f"{ws.title}: columns not found for {missing}; the sheet layout may have changed")
@@ -122,14 +174,14 @@ def columns(ws):
 
 
 def read_totals(ws):
-    """Day -> {'sply': SPLY date, group: {(field, period): value}} from the day-only sheet."""
+    """Day -> {'sply': SPLY date, 'splm': SPLM date, group: {(field, period): value}} from the day-only sheet."""
     cols = columns(ws)
     out = {}
     for row in ws.iter_rows(min_row=6, values_only=True):
-        if not isinstance(row[0], dt.datetime) or not isinstance(row[1], dt.datetime):
+        if not isinstance(row[0], dt.datetime) or not isinstance(row[1], dt.datetime) or not isinstance(row[2], dt.datetime):
             continue
         out[row[0].date()] = {
-            "sply": row[1].date(),
+            "sply": row[1].date(), "splm": row[2].date(),
             **{g: {(m, p): number(row[i]) for (b, m, p), i in cols.items() if b == g} for g in GROUPS},
         }
     return out
@@ -170,24 +222,6 @@ def read_leaves(ws):
             raise SystemExit(f"{ws.title}: {key} appears twice")
         out[key] = values
     return out, skipped
-
-
-# Which Summary Category columns make up each value adj part, for this month's file and for last year's file.
-# This month: the outlets are classed as same or new against last year's list; last year: by store type.
-VA_COLUMNS_THIS = {
-    "all": ("All Outlets",),
-    "allOwn": ("SPLY SAME OWN", "SPLY NEW OWN"),
-    "allFran": ("SPLY SAME FRAN", "SPLY NEW FRAN"),
-    "sameOwn": ("SPLY SAME OWN",),
-    "sameFran": ("SPLY SAME FRAN",),
-}
-VA_COLUMNS_SPLY = {
-    "all": ("Grand Total",),
-    "allOwn": ("Total OWN",),
-    "allFran": ("Total FRAN",),
-    "sameOwn": ("SPLY SAME OWN",),
-    "sameFran": ("SPLY SAME FRAN",),
-}
 
 
 def read_value_adj(path, layout):
@@ -242,9 +276,103 @@ def report_roles():
     return by_head, by_division
 
 
+def build_variant(cmp, days, totals, heads, head_order, leaves, va_this, va_prev, role):
+    """The day-wise figures against one comparison: 'sply' (same day last year) or 'splm' (same day last month).
+    Returns (groups, detail groups)."""
+    prev_date = {d: totals[d][cmp] for d in days}
+    out_groups, detail_groups = {}, {}
+
+    for g in GROUPS:
+        tp = this_period(g, cmp)
+        total = {k: [] for k in OUTPUT}
+        for d in days:
+            t = totals[d][g]
+            values = {
+                "sales": t[("sales", tp)], "splySales": t[("sales", cmp)],
+                "gpv": product(t[("sales", tp)], t[("gp", tp)]),
+                "splyGpv": product(t[("sales", cmp)], t[("gp", cmp)]),
+                "valueAdj": va_value(va_this["total"], d, g),
+                "splyValueAdj": va_value(va_prev["total"], prev_date[d], g),
+                "ff": t[("ff", tp)], "splyFf": t[("ff", cmp)],
+            }
+            for k in OUTPUT:
+                total[k].append(values[k])
+
+        head_rows = []
+        for div, hd in head_order:
+            fields = {k: [] for k in OUTPUT}
+            for d in days:
+                h = heads.get((d, div, hd), {})
+                values = {
+                    "sales": h.get((g, "sales", tp)), "splySales": h.get((g, "sales", cmp)),
+                    "gpv": product(h.get((g, "sales", tp)), h.get((g, "gp", tp))),
+                    "splyGpv": product(h.get((g, "sales", cmp)), h.get((g, "gp", cmp))),
+                    "valueAdj": va_value(va_this["head"], (d, div, hd), g),
+                    "splyValueAdj": va_value(va_prev["head"], (prev_date[d], div, hd), g),
+                    "ff": h.get((g, "ff", tp)), "splyFf": h.get((g, "ff", cmp)),
+                }
+                for k in OUTPUT:
+                    fields[k].append(values[k])
+            head_rows.append({"division": div, "role": role(div, hd), "head": hd,
+                              **{k: money(v) for k, v in fields.items()}})
+
+        # how much of the store group's sales the category heads cover (the rest is on division rows with no head)
+        head_sales = sum(h["sales"][-1] or 0 for h in head_rows if h["sales"])
+        group_sales = total["sales"][-1] or 1
+        print(f"{cmp} {g}: {len(head_rows)} heads, heads cover {head_sales / group_sales:.2%} of sales on {days[-1]:%d-%b}")
+        out_groups[g] = {"total": {k: money(v) for k, v in total.items()}, "heads": head_rows}
+
+    # own and franchise have to add up to the store group: sales of this month and of the comparison period
+    for g, own, fran in (("all", "allOwn", "allFran"), ("same", "sameOwn", "sameFran")):
+        for d in days:
+            for period in (this_period(g, cmp), cmp):
+                s = totals[d][g][("sales", period)]
+                parts = totals[d][own][("sales", period)] + totals[d][fran][("sales", period)]
+                if abs(s - parts) > 0.001 * s:
+                    raise SystemExit(f"{cmp} {g}: own + franchise sales differ from the store group on {d:%d-%b}")
+
+    # the detail rows: one per division, category or CRP. Value adj is given per CRP only.
+    keys = list(dict.fromkeys(
+        [k[1:] for k in leaves] + [k[1:] for k in va_this["crp"]] + [k[1:] for k in va_prev["crp"]]))
+    for g in GROUPS:
+        tp = this_period(g, cmp)
+        rows = []
+        for key in keys:
+            div, cat, hd, c = key
+            vals = {k: [] for k in DETAIL_FIELDS}
+            for d in days:
+                leaf = leaves.get((d, *key), {})
+                s, ss = leaf.get((g, "sales", tp)), leaf.get((g, "sales", cmp))
+                gp, sgp = leaf.get((g, "gp", tp)), leaf.get((g, "gp", cmp))
+                vals["sales"].append(s)
+                vals["splySales"].append(ss)
+                vals["gpv"].append(product(s, gp))
+                vals["splyGpv"].append(product(ss, sgp))
+                vals["valueAdj"].append(va_value(va_this["crp"], (d, *key), g))
+                vals["splyValueAdj"].append(va_value(va_prev["crp"], (prev_date[d], *key), g))
+            if not any(v for values in vals.values() for v in values if v):
+                continue
+            rows.append({"division": div, "category": cat, "head": hd, "crp": c,
+                         **{k: money(v) for k, v in vals.items()}})
+        detail_groups[g] = rows
+
+        # the rows should add up to the day totals; the value adj gap is value adj that has no row
+        for n, d in enumerate(days):
+            row_sales = sum(r["sales"][n] or 0 for r in rows)
+            total_sales = out_groups[g]["total"]["sales"][n] or 0
+            if abs(row_sales - total_sales) > 0.001 * total_sales:
+                raise SystemExit(f"{cmp} {g} detail sales differ from the day total on {d:%d-%b} by {row_sales - total_sales:,.0f}")
+        va_gap = [round((out_groups[g]["total"]["valueAdj"][n] or 0) - sum(r["valueAdj"][n] or 0 for r in rows))
+                  for n in range(len(days))]
+        print(f"{cmp} {g}: {len(rows)} detail rows; value adj not on any row (taka): {va_gap}")
+
+    return out_groups, detail_groups
+
+
 def main():
     report = Path(sys.argv[1]) if len(sys.argv) > 1 else find_day_wise()
-    for path in (VAL_THIS, VAL_SPLY):
+    prev_paths = {"sply": VAL_SPLY, "splm": VAL_SPLM}
+    for path in (VAL_THIS, VAL_SPLY, VAL_SPLM):
         if not path.exists():
             raise SystemExit(f"Value adj workbook not found: {path}")
     print(f"Reading {report.name} with the value adj from {VAL_FOLDER.name}")
@@ -257,29 +385,10 @@ def main():
     if skipped:
         print(f"Rows with no division (not used): sales {skipped:,.0f}")
 
-    this_rows = read_value_adj(VAL_THIS, VA_COLUMNS_THIS)
-    sply_rows = read_value_adj(VAL_SPLY, VA_COLUMNS_SPLY)
-    va_this, va_sply = value_adj_sums(this_rows), value_adj_sums(sply_rows)
-
     # the last day with a sales figure; later columns are not reported yet
     days = sorted(totals)
     last = max(i for i, d in enumerate(days) if totals[d]["all"][("sales", "this")])
     days = days[: last + 1]
-    sply = {d: totals[d]["sply"] for d in days}
-    this_days = {r[0] for r in this_rows}
-    sply_days = {r[0] for r in sply_rows}
-    if [d for d in days if d not in this_days] or [sply[d] for d in days if sply[d] not in sply_days]:
-        raise SystemExit("A day of the report is missing from the value adj workbooks")
-
-    # own and franchise have to add up to the store group: check the sales and the value adj
-    for g, own, fran in (("all", "allOwn", "allFran"), ("same", "sameOwn", "sameFran")):
-        for d in days:
-            s = totals[d][g][("sales", "this")]
-            parts = totals[d][own][("sales", "this")] + totals[d][fran][("sales", "this")]
-            if abs(s - parts) > 0.001 * s:
-                raise SystemExit(f"{g}: own + franchise sales differ from the store group on {d:%d-%b}")
-        print(f"{g}: own + franchise sales add up to the store group; value adj gap (taka): "
-              f"{[round(va_value(va_this['total'], d, g) - va_value(va_this['total'], d, own) - va_value(va_this['total'], d, fran)) for d in days]}")
 
     roles_by_head, roles_by_division = report_roles()
 
@@ -289,45 +398,17 @@ def main():
         print(f"Head {head} ({division}) is not in the monthly report: role taken from its division")
         return roles_by_division.get(division, "")
 
-    out_groups = {}
-    for g in GROUPS:
-        total = {k: [] for k in OUTPUT}
-        for d in days:
-            t = totals[d][g]
-            values = {
-                "sales": t[("sales", "this")], "splySales": t[("sales", "sply")],
-                "gpv": product(t[("sales", "this")], t[("gp", "this")]),
-                "splyGpv": product(t[("sales", "sply")], t[("gp", "sply")]),
-                "valueAdj": va_value(va_this["total"], d, g),
-                "splyValueAdj": va_value(va_sply["total"], sply[d], g),
-                "ff": t[("ff", "this")], "splyFf": t[("ff", "sply")],
-            }
-            for k in OUTPUT:
-                total[k].append(values[k])
-
-        head_rows = []
-        for div, hd in head_order:
-            fields = {k: [] for k in OUTPUT}
-            for d in days:
-                h = heads.get((d, div, hd), {})
-                values = {
-                    "sales": h.get((g, "sales", "this")), "splySales": h.get((g, "sales", "sply")),
-                    "gpv": product(h.get((g, "sales", "this")), h.get((g, "gp", "this"))),
-                    "splyGpv": product(h.get((g, "sales", "sply")), h.get((g, "gp", "sply"))),
-                    "valueAdj": va_value(va_this["head"], (d, div, hd), g),
-                    "splyValueAdj": va_value(va_sply["head"], (sply[d], div, hd), g),
-                    "ff": h.get((g, "ff", "this")), "splyFf": h.get((g, "ff", "sply")),
-                }
-                for k in OUTPUT:
-                    fields[k].append(values[k])
-            head_rows.append({"division": div, "role": role(div, hd), "head": hd,
-                              **{k: money(v) for k, v in fields.items()}})
-
-        # how much of the store group's sales the category heads cover (the rest is on division rows with no head)
-        head_sales = sum(h["sales"][-1] or 0 for h in head_rows if h["sales"])
-        group_sales = total["sales"][-1] or 1
-        print(f"{g}: {len(head_rows)} heads, heads cover {head_sales / group_sales:.2%} of sales on {days[-1]:%d-%b}")
-        out_groups[g] = {"total": {k: money(v) for k, v in total.items()}, "heads": head_rows}
+    results = {}
+    for cmp in COMPARISONS:
+        this_rows = read_value_adj(VAL_THIS, THIS_VA_LAYOUT[cmp])
+        prev_rows = read_value_adj(prev_paths[cmp], PREV_VA_LAYOUT[cmp])
+        this_days = {r[0] for r in this_rows}
+        prev_days = {r[0] for r in prev_rows}
+        if [d for d in days if d not in this_days] or [totals[d][cmp] for d in days if totals[d][cmp] not in prev_days]:
+            raise SystemExit(f"A day of the report is missing from the value adj workbooks ({cmp})")
+        results[cmp] = build_variant(
+            cmp, days, totals, heads, head_order, leaves,
+            value_adj_sums(this_rows), value_adj_sums(prev_rows), role)
 
     period_start, period_end = days[0], days[-1]
     out = {
@@ -335,53 +416,21 @@ def main():
         "sourceFile": report.name,
         "asOf": period_end.isoformat(),
         "periodLabel": f"{period_start:%b} {period_start.day}-{period_end.day} {period_end.year}",
-        "days": [{"date": d.isoformat(), "sply": sply[d].isoformat()} for d in days],
-        "groups": out_groups,
+        "days": [{"date": d.isoformat(), "sply": totals[d]["sply"].isoformat(), "splm": totals[d]["splm"].isoformat()}
+                 for d in days],
+        "groups": results["sply"][0],
+        "splmGroups": results["splm"][0],
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"As of {out['asOf']} | {out['periodLabel']} | {len(days)} days | saved {OUT}")
 
-    # detail rows: one per division, category or CRP. Value adj is given per CRP only.
-    keys = list(dict.fromkeys(
-        [k[1:] for k in leaves] + [k[1:] for k in va_this["crp"]] + [k[1:] for k in va_sply["crp"]]))
-    detail_groups = {}
-    for g in GROUPS:
-        rows = []
-        for key in keys:
-            div, cat, hd, c = key
-            vals = {k: [] for k in DETAIL_FIELDS}
-            for d in days:
-                leaf = leaves.get((d, *key), {})
-                s, ss = leaf.get((g, "sales", "this")), leaf.get((g, "sales", "sply"))
-                gp, sgp = leaf.get((g, "gp", "this")), leaf.get((g, "gp", "sply"))
-                vals["sales"].append(s)
-                vals["splySales"].append(ss)
-                vals["gpv"].append(product(s, gp))
-                vals["splyGpv"].append(product(ss, sgp))
-                vals["valueAdj"].append(va_value(va_this["crp"], (d, *key), g))
-                vals["splyValueAdj"].append(va_value(va_sply["crp"], (sply[d], *key), g))
-            if not any(v for values in vals.values() for v in values if v):
-                continue
-            rows.append({"division": div, "category": cat, "head": hd, "crp": c,
-                         **{k: money(v) for k, v in vals.items()}})
-        detail_groups[g] = rows
-
-        # the rows should add up to the day totals; the value adj gap is value adj that has no row
-        for n, d in enumerate(days):
-            row_sales = sum(r["sales"][n] or 0 for r in rows)
-            total_sales = out_groups[g]["total"]["sales"][n] or 0
-            if abs(row_sales - total_sales) > 0.001 * total_sales:
-                raise SystemExit(f"{g} detail sales differ from the day total on {d:%d-%b} by {row_sales - total_sales:,.0f}")
-        va_gap = [round((out_groups[g]["total"]["valueAdj"][n] or 0) - sum(r["valueAdj"][n] or 0 for r in rows))
-                  for n in range(len(days))]
-        print(f"{g}: {len(rows)} detail rows; value adj not on any row (taka): {va_gap}")
-
     detail = {
         "generatedAt": out["generatedAt"],
         "sourceFile": report.name,
         "asOf": out["asOf"],
-        "groups": detail_groups,
+        "groups": results["sply"][1],
+        "splmGroups": results["splm"][1],
     }
     DETAIL_OUT.write_text(json.dumps(detail, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     print(f"saved {DETAIL_OUT} ({DETAIL_OUT.stat().st_size / 1e6:.2f} MB)")
