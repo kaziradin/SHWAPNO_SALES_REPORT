@@ -35,7 +35,7 @@ function valueAt(l: Line, m: Measure, i: number): number | null {
   const s = l.s[i], g = l.g[i], f = l.f ? l.f[i] : null;
   if (m === "sales") return s;
   if (m === "gpv") return g;
-  if (m === "gp") return s && g != null ? (g / s) * 100 : null;
+  if (m === "gp") return s && g != null ? g / s : null;
   if (m === "bs") return s != null && f ? s / f : null;
   return f;
 }
@@ -45,7 +45,7 @@ function totalAt(l: Line, m: Measure): number | null {
   const s = sumOf(l.s), g = sumOf(l.g);
   if (m === "sales") return s;
   if (m === "gpv") return g;
-  if (m === "gp") return s ? (g / s) * 100 : null;
+  if (m === "gp") return s ? g / s : null;
   if (m === "bs") return l.f && sumOf(l.f) ? s / sumOf(l.f) : null;
   return l.f ? sumOf(l.f) : null;
 }
