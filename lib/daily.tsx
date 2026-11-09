@@ -1,8 +1,25 @@
 import { arrowOf, growth, signedPct, toneOfNum } from "@/lib/format";
-import type { DayFields, DetailRow } from "@/lib/types";
+import type { DayFields, DetailRow, StoreKey } from "@/lib/types";
 
 /** The Period choice that covers every day of the month so far. */
 export const MTD = "mtd";
+
+/** The Store group choice (all stores or same stores) and the Store type choice (own and franchise, own, franchise). */
+export type StoreGroup = "all" | "same";
+export type StoreType = "all" | "own" | "fran";
+
+/** The name of each data group on the Day wise sales tab. */
+export const STORE_LABEL: Record<StoreKey, string> = {
+  all: "All stores", same: "Same stores",
+  allOwn: "Own stores", allFran: "Franchise stores",
+  sameOwn: "Same own stores", sameFran: "Same franchise stores",
+};
+
+/** The data group for a Store group and a Store type. */
+export function storeKey(store: StoreGroup, type: StoreType): StoreKey {
+  if (type === "all") return store;
+  return `${store}${type === "own" ? "Own" : "Fran"}` as StoreKey;
+}
 
 /** The divisions the detail table lists, in this order. The others are left out; the grand total still includes them. */
 export const SHOWN_DIVISIONS = ["COMPANY GOODS", "PACKED COMMODITY", "LOOSE COMMODITY", "FRESH PRODUCE", "GENERAL MERCHANDISE", "LIFESTYLE"];

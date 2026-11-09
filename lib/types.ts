@@ -82,11 +82,14 @@ export type DetailRow = Pick<DayFields, "sales" | "splySales" | "gpv" | "splyGpv
   division: string; category: string | null; head: string | null; crp: string | null;
 };
 
+/** A data group on the Day wise sales tab: all stores, same stores, and their own and franchise stores. */
+export type StoreKey = "all" | "same" | "allOwn" | "allFran" | "sameOwn" | "sameFran";
+
 export type DailyDetailData = {
   generatedAt: string;
   sourceFile: string;
   asOf: string;
-  groups: Record<"all" | "same", DetailRow[]>;
+  groups: Record<StoreKey, DetailRow[]>;
 };
 
 export type DailyData = {
@@ -96,5 +99,5 @@ export type DailyData = {
   periodLabel: string;
   /** The day of this month and the same day last year that the workbook compares it with. */
   days: { date: string; sply: string }[];
-  groups: Record<"all" | "same", { total: DayFields; heads: DailyHead[] }>;
+  groups: Record<StoreKey, { total: DayFields; heads: DailyHead[] }>;
 };

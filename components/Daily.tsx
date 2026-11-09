@@ -6,13 +6,13 @@ import { abbrOf, arrowOf, crFmt, crOrDash, crSigned, full, growth, pct, roleName
 import { downloadExcel, ExportButton, type ExportCell, type ExportCol } from "@/lib/export";
 import {
   Cell, dayFieldsOfRows, dayLong, dayMonth, dayWeekday, difference, diffChg, Figures, growthChg, isFriSat, MTD, Ratios, ratiosOf,
-  SHOWN_DIVISIONS, sumFigures, uniqSorted,
+  SHOWN_DIVISIONS, STORE_LABEL, storeKey, StoreGroup, StoreType, sumFigures, uniqSorted,
 } from "@/lib/daily";
 import DailyDetail from "./DailyDetail";
 import DayLines, { type DayPoint } from "./DayLines";
 
-type Group = "all" | "same";
-const GROUP_LABEL: Record<Group, string> = { all: "All stores", same: "Same stores" };
+const STORE_GROUP_LABEL: Record<StoreGroup, string> = { all: "All stores", same: "Same stores" };
+const TYPE_LABEL: Record<StoreType, string> = { all: "Own and franchise", own: "Own stores", fran: "Franchise stores" };
 const TOTAL = "total";
 /** The Period choice that takes the dates typed in From and To. */
 const RANGE = "range";
@@ -72,7 +72,10 @@ export default function Daily({ daily }: { daily: DailyData }) {
   const [to, setTo] = useState<string>(lastDate);
   // a day clicked in the Day by day table: the KPIs and charts show that day, the table keeps its view
   const [focus, setFocus] = useState<string>("");
-  const [group, setGroup] = useState<Group>("all");
+  const [store, setStore] = useState<StoreGroup>("all");
+  const [type, setType] = useState<StoreType>("all");
+  // the data group the figures come from: all stores, same stores, or their own or franchise stores
+  const group = storeKey(store, type);
   const [head, setHead] = useState<string>(TOTAL);
   const [crp, setCrp] = useState("");
   const [cat, setCat] = useState("");
@@ -117,9 +120,10 @@ export default function Daily({ daily }: { daily: DailyData }) {
     if (crpSel && !rs.some((r) => r.crp === crpSel)) setCrp("");
     if (catSel && !rs.some((r) => r.category === catSel)) setCat("");
   };
-  const onGroup = (v: Group) => {
-    setGroup(v);
-    const rs = listedRows(detail?.groups[v]);
+  const onGroup = (nextStore: StoreGroup, nextType: StoreType) => {
+    setStore(nextStore);
+    setType(nextType);
+    const rs = listedRows(detail?.groups[storeKey(nextStore, nextType)]);
     if (crpSel && !rs.some((r) => r.crp === crpSel)) setCrp("");
     if (catSel && !rs.some((r) => r.category === catSel)) setCat("");
   };
@@ -228,8 +232,13 @@ export default function Daily({ daily }: { daily: DailyData }) {
           </>
         )}
         <label>Store group
-          <select value={group} onChange={(e) => onGroup(e.target.value as Group)} aria-label="Store group">
-            {(Object.keys(GROUP_LABEL) as Group[]).map((k) => <option key={k} value={k}>{GROUP_LABEL[k]}</option>)}
+          <select value={store} onChange={(e) => onGroup(e.target.value as StoreGroup, type)} aria-label="Store group">
+            {(Object.keys(STORE_GROUP_LABEL) as StoreGroup[]).map((k) => <option key={k} value={k}>{STORE_GROUP_LABEL[k]}</option>)}
+          </select>
+        </label>
+        <label>Store type
+          <select value={type} onChange={(e) => onGroup(store, e.target.value as StoreType)} aria-label="Store type">
+            {(Object.keys(TYPE_LABEL) as StoreType[]).map((k) => <option key={k} value={k}>{TYPE_LABEL[k]}</option>)}
           </select>
         </label>
         <label>Category head
@@ -263,7 +272,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
         ))}
       </section>
       <p className="ov-note">
-        {selectionLabel}, {GROUP_LABEL[group].toLowerCase()}, {periodName}.{" "}
+        {selectionLabel}, {STORE_LABEL[group].toLowerCase()}, {periodName}.{" "}
         {chosen.length ? "Each day is compared with the same day last year." : "No days fall in this range; choose dates inside the data period."}
         {period === RANGE && from > to && " The two dates were swapped, so the range runs from the earlier to the later date."}
         {fromRows && " Footfall and basket are hidden when a CRP or category is chosen: a bill with items from several categories would be counted more than once."}
@@ -298,7 +307,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
         <div className="ov-table-scroll">
           <table className="ov-table day-wide">
             <caption>
-              {selectionLabel}, {GROUP_LABEL[group].toLowerCase()}, {periodName}. Each day against the same day last year.
+              {selectionLabel}, {STORE_LABEL[group].toLowerCase()}, {periodName}. Each day against the same day last year.
               Click a day or any number in its column to show that day in the KPIs and charts; click it again to go back.
               Friday and Saturday are shaded.
             </caption>

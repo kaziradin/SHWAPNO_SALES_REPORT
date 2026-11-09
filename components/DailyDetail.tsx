@@ -1,15 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { DailyData, DailyDetailData, DailyHead, DayFields, DetailRow } from "@/lib/types";
+import type { DailyData, DailyDetailData, DailyHead, DayFields, DetailRow, StoreKey } from "@/lib/types";
 import { crOrDash, growth, pct, titleCase } from "@/lib/format";
 import { downloadExcel, ExportButton, type ExportCell, type ExportCol } from "@/lib/export";
 import {
-  Cell, dayLong, dayMonth, difference, diffChg, Figures, growthChg, MTD, ratiosOf, SHOWN_DIVISIONS, SortState, SortTh, sumFigures,
+  Cell, dayLong, dayMonth, difference, diffChg, Figures, growthChg, MTD, ratiosOf, SHOWN_DIVISIONS, SortState, SortTh, STORE_LABEL,
+  sumFigures,
 } from "@/lib/daily";
 
 type Amounts = Pick<DayFields, "sales" | "splySales" | "gpv" | "splyGpv" | "valueAdj" | "splyValueAdj">;
-type Group = "all" | "same";
+type Group = StoreKey;
 type SortKey = "name" | "sales" | "gpv" | "gp" | "gpvoi" | "goi";
 type Sort = SortState<SortKey>;
 
@@ -17,7 +18,6 @@ type Sort = SortState<SortKey>;
 type Node = { id: string; level: number; name: string; figures: Figures; children: Node[] };
 
 const SEP = "\u001f";
-const GROUP_LABEL: Record<Group, string> = { all: "All stores", same: "Same stores" };
 const LEVEL_NAME: Record<number, string> = { 1: "Division", 2: "Head", 3: "CRP", 4: "Category level 3" };
 
 /** Figures for the chosen days, summed from the money fields. GPV+OI is GPV plus value adj, as in the workbook. */
@@ -114,7 +114,7 @@ export default function DailyDetail({ daily, group, detail, chosen, label, compa
 
   // the days chosen in the Period list (a month, one day or a date range), with their label and last-year comparison
   const idx = chosen;
-  const groupLabel = GROUP_LABEL[group].toLowerCase();
+  const groupLabel = STORE_LABEL[group].toLowerCase();
 
   const onSort = (k: SortKey) =>
     setSort((s) => (s.key === k ? { key: k, dir: s.dir === "asc" ? "desc" : "asc" } : { key: k, dir: k === "name" ? "asc" : "desc" }));
