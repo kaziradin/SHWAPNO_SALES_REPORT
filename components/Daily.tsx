@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { DailyData, DailyDetailData, DailyHead, DayFields, StoreKey } from "@/lib/types";
+import type { DailyData, DailyDetailData, DailyHead, DayFields, DetailRow, StoreKey } from "@/lib/types";
 import { abbrOf, arrowOf, crFmt, crOrDash, crSigned, full, growth, pct, roleName, signedPct, titleCase, toneOfNum } from "@/lib/format";
 import { downloadExcel, ExportButton, type ExportCell, type ExportCol } from "@/lib/export";
 import {
@@ -10,7 +10,7 @@ import {
 } from "@/lib/daily";
 import DailyDetail from "./DailyDetail";
 import DayLines, { type DayPoint } from "./DayLines";
-import DayHeads, { type DayHeadRow } from "./DayHeads";
+import DayHeads, { type DayCrpRow, type DayHeadRow } from "./DayHeads";
 
 const STORE_GROUP_LABEL: Record<StoreGroup, string> = { all: "All stores", same: "Same stores" };
 const TYPE_LABEL: Record<StoreType, string> = { all: "Own and franchise", own: "Own stores", fran: "Franchise stores" };
@@ -173,6 +173,28 @@ export default function Daily({ daily }: { daily: DailyData }) {
   const shownX = focusRow ? focusRow.x : totalX;
   const chartBand = focusRow ? { from: focus, to: focus } : band;
   const chartTotalLabel = focusRow ? "Selected day" : totalLabel;
+  // a head's responsible persons (CRPs) and their categories for the chosen days; the CRP and Category filters apply
+  const crpsOf = (h: DailyHead): DayCrpRow[] => {
+    const rs = rowsOfHead(h).filter((r) => r.crp != null && r.category != null
+      && (!crpSel || r.crp === crpSel) && (!catSel || r.category === catSel));
+    const figures = (rows: DetailRow[]) => {
+      const fields = dayFieldsOfRows(rows, daily.days.length);
+      const f = sumFigures(chosenIdx.map((i) => dayFigures(fields, i)));
+      return { f, x: ratiosOf(f) };
+    };
+    const byCrp = new Map<string, DetailRow[]>();
+    for (const r of rs) byCrp.set(r.crp as string, [...(byCrp.get(r.crp as string) ?? []), r]);
+    return [...byCrp.entries()]
+      .map(([name, crows]) => {
+        const byCat = new Map<string, DetailRow[]>();
+        for (const r of crows) byCat.set(r.category as string, [...(byCat.get(r.category as string) ?? []), r]);
+        const cats = [...byCat.entries()]
+          .map(([cat, catRows]) => ({ name: cat, ...figures(catRows) }))
+          .sort((a, b) => (b.f.sales ?? 0) - (a.f.sales ?? 0));
+        return { name, ...figures(crows), cats };
+      })
+      .sort((a, b) => (b.f.sales ?? 0) - (a.f.sales ?? 0));
+  };
   // the head table under the charts: each head's figures for the chosen days, with the same filters as the tab
   const headTable: DayHeadRow[] = g.heads
     .filter((h) => !headSel || headKey(h) === headKey(headSel))
@@ -181,7 +203,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
       if (fromRows && rs.length === 0) return [];
       const fields: DayFields = fromRows ? dayFieldsOfRows(rs, daily.days.length) : h;
       const f = sumFigures(chosenIdx.map((i) => dayFigures(fields, i)));
-      return [{ division: h.division, role: h.role, head: h.head, f, x: ratiosOf(f) }];
+      return [{ division: h.division, role: h.role, head: h.head, f, x: ratiosOf(f), crps: crpsOf(h) }];
     })
     // the divisions in the order the detail table lists them, and the heads alphabetically within each
     .sort((a, b) => SHOWN_DIVISIONS.indexOf(a.division) - SHOWN_DIVISIONS.indexOf(b.division) || a.head.localeCompare(b.head));
@@ -336,7 +358,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
 
       <div className="ov-section-head"><h2>Category heads</h2></div>
       <p className="ov-note">
-        {selectionLabel}, {STORE_LABEL[group].toLowerCase()}, {periodName}, compared with {compareName}.
+        {selectionLabel}, {STORE_LABEL[group].toLowerCase()}, {periodName}, compared with {compareName}. Click + to see a head's responsible persons, and a person's categories.
         {!headSel && !fromRows && " The total covers every division, including sales with no head, so it can be a little above the sum of the heads."}
       </p>
       <DayHeads rows={headTable} total={{ f: total, x: totalX }} totalLabel={headTotalLabel} showFootfall={!fromRows}
