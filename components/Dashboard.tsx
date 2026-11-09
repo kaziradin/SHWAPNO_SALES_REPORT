@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useState } from "react";
-import type { Cat3Row, DailyData, DailyDetailData, DailyHead, DetailRow, HeadRow, Metrics, MonthOverview, Outlet, Report, SegmentKey } from "@/lib/types";
+import type { Cat3Row, DailyData, DailyDetailData, DailyHead, DetailRow, HeadRow, Metrics, MonthOverview, Outlet, Report, SegmentKey, StoreKey } from "@/lib/types";
 import {
   abbrOf, arrowOf, crFmt, crOrDash, crSigned, diff, growth, int, longDate, monthName, pct, pp, roleName, signedPct, titleCase, toneOfNum,
 } from "@/lib/format";
@@ -348,16 +348,29 @@ function withDailyHeads(rows: HeadRow[], dailyHeads: DailyHead[]): HeadRow[] {
   });
 }
 
+/** The day-wise data group of each segment of the Category heads tab. */
+const STORE_OF: Partial<Record<SegmentKey, StoreKey>> = {
+  all: "all", same: "same", own: "allOwn", ownSame: "sameOwn", franchise: "allFran", franchiseSame: "sameFran",
+};
+
+/** The this-month and same-store data groups behind a segment, for the head drill-down; null where there is no detail. */
+function familyOf(seg: SegmentKey): { all: StoreKey; same: StoreKey } | null {
+  if (seg === "all" || seg === "same") return { all: "all", same: "same" };
+  if (seg === "own" || seg === "ownSame") return { all: "allOwn", same: "sameOwn" };
+  if (seg === "franchise" || seg === "franchiseSame") return { all: "allFran", same: "sameFran" };
+  return null;
+}
+
 function Heads({ report, cmp, daily, onCmp }: { report: Report; cmp: Cmp; daily: DailyData; onCmp: (c: Cmp) => void }) {
   const s = CMP_LABEL[cmp].short;
   const reportBlocks = report[cmp].headBlocks ?? {};
-  // all stores and same stores come from the day-wise file, against last year or last month, so they match the Day wise tab
+  // the segments with day-wise figures (all, same, own and franchise, and their same-store versions) come from the
+  // day-wise file, against last year or last month, so they match the Day wise tab and the CRP and Category filters
   const dayGroups = cmp === "sply" ? daily.groups : daily.splmGroups;
-  const blocks: Partial<Record<SegmentKey, HeadRow[]>> = {
-    ...reportBlocks,
-    all: withDailyHeads(reportBlocks.all ?? [], dayGroups.all.heads),
-    same: withDailyHeads(reportBlocks.same ?? [], dayGroups.same.heads),
-  };
+  const blocks: Partial<Record<SegmentKey, HeadRow[]>> = { ...reportBlocks };
+  for (const segKey of Object.keys(STORE_OF) as SegmentKey[]) {
+    blocks[segKey] = withDailyHeads(reportBlocks[segKey] ?? [], dayGroups[STORE_OF[segKey] as StoreKey].heads);
+  }
   const keys = (Object.keys(SEGMENT_LABELS) as SegmentKey[]).filter((k) => blocks[k]?.length);
   const [drill, setDrill] = useState<HeadRow | null>(null);
   const [seg, setSeg] = useState<SegmentKey>("all");
@@ -377,10 +390,12 @@ function Heads({ report, cmp, daily, onCmp }: { report: Report; cmp: Cmp; daily:
     return () => { live = false; };
   }, []);
   if (drill) {
-    const headSame = (blocks.same ?? []).find((x) => x.division === drill.division && x.head === drill.head);
+    // the same-store version of the segment: same stores, same own stores or same franchise stores
+    const sameSeg: SegmentKey = seg === "own" || seg === "ownSame" ? "ownSame" : seg === "franchise" || seg === "franchiseSame" ? "franchiseSame" : "same";
+    const headSame = (blocks[sameSeg] ?? []).find((x) => x.division === drill.division && x.head === drill.head);
     // the responsible persons and categories come from the day-wise detail, for last year and last month alike,
     // so they match the head table and the Day wise tab
-    const cat = cat3FromDetail(detail, cmp, drill);
+    const cat = cat3FromDetail(detail, cmp, drill, seg);
     return <HeadDrill head={drill} headSame={headSame} cat={cat} seg={seg} cmp={cmp} onCmp={onCmp} onBack={() => setDrill(null)} />;
   }
 
@@ -388,9 +403,9 @@ function Heads({ report, cmp, daily, onCmp }: { report: Report; cmp: Cmp; daily:
   const headKeyOf = (x: { division: string; head: string | null }) => `${x.division}|${x.head ?? ""}`;
   const baseKeys = new Set(baseHeads.map(headKeyOf));
   // CRP and category need the detail rows, which cover SPLY for all stores and same stores
-  const canDetail = (seg === "all" || seg === "same") && Boolean(detail);
+  const canDetail = Boolean(familyOf(seg)) && Boolean(detail);
   const detailRows: DetailRow[] = canDetail
-    ? ((cmp === "sply" ? detail?.groups : detail?.splmGroups)?.[seg as "all" | "same"] ?? []).filter((r) => baseKeys.has(headKeyOf(r)))
+    ? ((cmp === "sply" ? detail?.groups : detail?.splmGroups)?.[STORE_OF[seg] as StoreKey] ?? []).filter((r) => baseKeys.has(headKeyOf(r)))
     : [];
   const rowsFor = (headK: string, crpV: string, catV: string) =>
     detailRows.filter((r) => (!headK || headKeyOf(r) === headK) && (!crpV || r.crp === crpV) && (!catV || r.category === catV));
@@ -629,9 +644,11 @@ function Heads({ report, cmp, daily, onCmp }: { report: Report; cmp: Cmp; daily:
 
 /** The Cat 3 rows of one head for the drill-down, from the day-wise detail: the month to date, for all stores and for
  *  same stores, against last year or last month. Last month has no monthly Cat 3 figures, so it is built from here. */
-function cat3FromDetail(detail: DailyDetailData | null, cmp: Cmp, head: HeadRow): Cat3Row[] {
-  if (!detail) return [];
-  const groups = cmp === "sply" ? detail.groups : detail.splmGroups;
+function cat3FromDetail(detail: DailyDetailData | null, cmp: Cmp, head: HeadRow, seg: SegmentKey): Cat3Row[] {
+  const fam = familyOf(seg);
+  if (!detail || !fam) return [];
+  const all = (cmp === "sply" ? detail.groups : detail.splmGroups)[fam.all];
+  const same = (cmp === "sply" ? detail.groups : detail.splmGroups)[fam.same];
   const sum = (v: (number | null)[]) => v.reduce<number>((t, x) => t + (x ?? 0), 0);
   const isHead = (r: DetailRow) => r.division === head.division && r.head === head.head && r.crp != null && r.category != null;
   const out = new Map<string, Cat3Row>();
@@ -648,14 +665,14 @@ function cat3FromDetail(detail: DailyDetailData | null, cmp: Cmp, head: HeadRow)
     }
     return c;
   };
-  for (const r of groups.all.filter(isHead)) {
+  for (const r of all.filter(isHead)) {
     Object.assign(rowFor(r), {
       sales: sum(r.sales), salesLy: sum(r.splySales),
       gpv: sum(r.gpv), gpvLy: sum(r.splyGpv),
       gpvOi: sum(r.gpv) + sum(r.valueAdj), gpvOiLy: sum(r.splyGpv) + sum(r.splyValueAdj),
     });
   }
-  for (const r of groups.same.filter(isHead)) {
+  for (const r of same.filter(isHead)) {
     Object.assign(rowFor(r), {
       sameSales: sum(r.sales), sameSalesLy: sum(r.splySales),
       sameGpv: sum(r.gpv), sameGpvLy: sum(r.splyGpv),
@@ -750,7 +767,10 @@ function HeadDrill({ head, headSame, cat, seg, cmp, onCmp, onBack }: {
   head: HeadRow; headSame: HeadRow | undefined; cat: Cat3Row[]; seg: SegmentKey; cmp: Cmp; onCmp: (c: Cmp) => void; onBack: () => void;
 }) {
   const s = CMP_LABEL[cmp].short;
-  const [level, setLevel] = useState<Level>(seg === "same" ? "same" : "all");
+  // the segment's own name and its same-store version, for the subtitle and the starting level
+  const baseSeg: SegmentKey = seg.startsWith("own") ? "own" : seg.startsWith("franchise") ? "franchise" : "all";
+  const sameSeg: SegmentKey = baseSeg === "all" ? "same" : baseSeg === "own" ? "ownSame" : "franchiseSame";
+  const [level, setLevel] = useState<Level>(seg === "same" || seg === "ownSame" || seg === "franchiseSame" ? "same" : "all");
   const [crp, setCrp] = useState("");
   const [catName, setCatName] = useState("");
   const [sort, setSort] = useState<Sort>({ key: "sales", dir: "desc" });
@@ -831,11 +851,11 @@ function HeadDrill({ head, headSame, cat, seg, cmp, onCmp, onBack }: {
     downloadExcel(`head-${safe}-${level}.xlsx`, "Responsible persons", cols, body);
   };
 
-  if (seg !== "all" && seg !== "same") {
+  if (!familyOf(seg)) {
     return (
       <div className="card">
         <button className="linkish" onClick={onBack}>← Back to all heads</button>
-        <p className="hint" style={{ marginTop: 12 }}>Responsible person detail is available for All stores and Same stores. Set the Store group to one of these.</p>
+        <p className="hint" style={{ marginTop: 12 }}>Responsible person detail is not available for this store group. Choose another Store group.</p>
       </div>
     );
   }
@@ -846,7 +866,7 @@ function HeadDrill({ head, headSame, cat, seg, cmp, onCmp, onBack }: {
         <div>
           <button className="linkish" onClick={onBack}>← Back to all heads</button>
           <h2 style={{ marginTop: 8 }}>{head.head}</h2>
-          <p className="hint">{nm(head.division)} · {head.role} · responsible persons and categories (Cat 3) · {s} · {level === "all" ? "all stores" : "same stores"}</p>
+          <p className="hint">{nm(head.division)} · {head.role} · responsible persons and categories (Cat 3) · {s} · {SEGMENT_LABELS[level === "all" ? baseSeg : sameSeg]}</p>
         </div>
       </div>
       <div className="xbar"><ExportButton onClick={exportDrill} /></div>
@@ -857,8 +877,8 @@ function HeadDrill({ head, headSame, cat, seg, cmp, onCmp, onBack }: {
           ))}
         </div>
         <div className="seg" role="group" aria-label="Store level">
-          <button aria-pressed={level === "all"} onClick={() => { setLevel("all"); setCrp(""); setCatName(""); setOpen(new Set()); setSort({ key: "sales", dir: "desc" }); }}>All stores</button>
-          <button aria-pressed={level === "same"} onClick={() => { setLevel("same"); setCrp(""); setCatName(""); setOpen(new Set()); setSort({ key: "sales", dir: "desc" }); }}>Same stores</button>
+          <button aria-pressed={level === "all"} onClick={() => { setLevel("all"); setCrp(""); setCatName(""); setOpen(new Set()); setSort({ key: "sales", dir: "desc" }); }}>{SEGMENT_LABELS[baseSeg]}</button>
+          <button aria-pressed={level === "same"} onClick={() => { setLevel("same"); setCrp(""); setCatName(""); setOpen(new Set()); setSort({ key: "sales", dir: "desc" }); }}>{SEGMENT_LABELS[sameSeg]}</button>
         </div>
         <button className="linkish" onClick={() => setOpen(groups.length > 0 && groups.every((g) => open.has(g.name)) ? new Set() : new Set(groups.map((g) => g.name)))}>
           {groups.length > 0 && groups.every((g) => open.has(g.name)) ? "Collapse all" : "Expand all"}
