@@ -38,7 +38,8 @@ export default function DayLines({ title, kind, points, total, band, totalLabel 
   // label every day when there is room, otherwise every second, third... day; the last day is always labelled
   const step = Math.max(1, Math.ceil(n / Math.max(1, Math.floor(plotW / 24))));
   const lastIdx = points.length - 1;
-  const lastNow = lastIdx >= 0 ? points[lastIdx].now : null;
+  // a value is written beside every day when there is room; with more days, every second, third... day (the last always)
+  const valueEvery = Math.max(1, Math.ceil((kind === "money" ? 56 : 44) / (plotW / n)));
   const ticks = [hi0, (hi0 + lo0) / 2, lo0];
 
   const indexAt = (clientX: number) => {
@@ -108,16 +109,18 @@ export default function DayLines({ title, kind, points, total, band, totalLabel 
               {(i % step === 0 || i === lastIdx) && (
                 <text x={x(i)} y={H - 8} textAnchor="middle" fontSize={11} className="ov-col-name">{dayNum(p.date)}</text>
               )}
+              {p.now != null && (i % valueEvery === 0 || i === lastIdx) && (
+                <text x={x(i)} y={y(p.now) - 8} textAnchor="middle" fontSize={10.5} fontWeight={600} pointerEvents="none"
+                  style={{ fill: "var(--this)" }}>{fmt(p.now)}</text>
+              )}
+              {p.prev != null && (i % valueEvery === 0 || i === lastIdx) && (
+                <text x={x(i)} y={y(p.prev) + 14} textAnchor="middle" fontSize={10} pointerEvents="none"
+                  style={{ fill: "#6b7a90" }}>{fmt(p.prev)}</text>
+              )}
             </g>
           ))}
           {/* one layer over the whole plot: the nearest day is read from the pointer position */}
           <rect x={left} y={0} width={plotW} height={H} fill="transparent" onMouseMove={onMove} onMouseLeave={onLeave} />
-          {lastNow != null && (
-            <text x={x(lastIdx)} y={y(lastNow) - 9} textAnchor="end" fontSize={12} style={{ fill: "var(--this)", fontWeight: 600 }}
-              pointerEvents="none">
-              {fmt(lastNow)}
-            </text>
-          )}
         </svg>
       </div>
       {node}
