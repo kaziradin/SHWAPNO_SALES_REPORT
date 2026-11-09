@@ -280,7 +280,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
         </label>
       </div>
 
-      <section className="ov-kpis five" aria-label="Day wise sales key figures">
+      <section className="ov-kpis five day-kpis" aria-label="Day wise sales key figures">
         {kpi.map((k) => (
           <div className="ov-kpi" key={k.label}>
             <div className="ov-kpi-label">{k.label}</div>

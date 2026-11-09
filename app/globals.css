@@ -331,6 +331,13 @@ td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .ov-kpi .ov-chg.up { color: #5fdc8f; }
 .ov-kpi .ov-chg.down { color: #ff8a80; }
 .ov-kpi .ov-chg.flat { color: #9fb4cf; }
+/* Day wise sales: a compact KPI band (the Overview keeps its larger cards) */
+.day-kpis { padding: 8px; gap: 6px; margin-bottom: 10px; border-radius: 10px; }
+.day-kpis .ov-kpi { padding: 7px 10px; border-radius: 8px; }
+.day-kpis .ov-kpi-label { font-size: 11px; letter-spacing: 0.04em; }
+.day-kpis .ov-kpi-value { font-size: 19px; margin: 2px 0 0; }
+.day-kpis .ov-kpi-cmp { font-size: 11.5px; }
+.day-kpis .ov-kpi-delta { margin-top: 2px; padding-top: 4px; font-size: 12px; }
 .ov-section-head { border-bottom: 2px solid #0f2744; padding-bottom: 8px; margin-bottom: 14px; }
 .ov-section-head h2 { text-transform: uppercase; letter-spacing: 0.06em; font-size: 14px; color: #0f2744; }
 .ov-panel h3 { text-transform: uppercase; letter-spacing: 0.05em; font-size: 12.5px; color: #4a5b72; }
