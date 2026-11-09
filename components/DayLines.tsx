@@ -40,6 +40,8 @@ export default function DayLines({ title, kind, points, total, band, totalLabel 
   const lastIdx = points.length - 1;
   // a value is written beside every day when there is room; with more days, every second, third... day (the last always)
   const valueEvery = Math.max(1, Math.ceil((kind === "money" ? 56 : 44) / (plotW / n)));
+  // the higher of a day's two values is labelled above its point and the lower one below, so the labels do not run together
+  const nowAbove = points.map((p) => p.now == null || p.prev == null || p.now >= p.prev);
   const ticks = [hi0, (hi0 + lo0) / 2, lo0];
 
   const indexAt = (clientX: number) => {
@@ -110,11 +112,11 @@ export default function DayLines({ title, kind, points, total, band, totalLabel 
                 <text x={x(i)} y={H - 8} textAnchor="middle" fontSize={11} className="ov-col-name">{dayNum(p.date)}</text>
               )}
               {p.now != null && (i % valueEvery === 0 || i === lastIdx) && (
-                <text x={x(i)} y={y(p.now) - 8} textAnchor="middle" fontSize={10.5} fontWeight={600} pointerEvents="none"
+                <text x={x(i)} y={nowAbove[i] ? y(p.now) - 8 : y(p.now) + 14} textAnchor="middle" fontSize={10.5} fontWeight={600} pointerEvents="none"
                   style={{ fill: "var(--this)" }}>{fmt(p.now)}</text>
               )}
               {p.prev != null && (i % valueEvery === 0 || i === lastIdx) && (
-                <text x={x(i)} y={y(p.prev) + 14} textAnchor="middle" fontSize={10} pointerEvents="none"
+                <text x={x(i)} y={nowAbove[i] ? y(p.prev) + 14 : y(p.prev) - 8} textAnchor="middle" fontSize={10} pointerEvents="none"
                   style={{ fill: "#6b7a90" }}>{fmt(p.prev)}</text>
               )}
             </g>
