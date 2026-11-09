@@ -1,7 +1,8 @@
 # Shwapno Business Performance Dashboard
 
 A Next.js dashboard built from two daily workbooks in `..\1. SALES FILE`:
-**Business Performance Report.xlsx** and **Day wise Sales GP Trend.xlsx**.
+**Business Performance Report.xlsx** and **Day Wise Sales GP Trend Report.xlsx**, plus the value adj workbooks
+**Day Wise Val Adj.xlsx** and **Day Wise Val Adj SPLY.xlsx** in `..\..\val adj\autmation for day wise val adj`.
 
 - **Overview**: sales, target achievement, footfall, basket size and GP, plus division charts and target by leader or zonal manager
 - **Category heads**: growth by category role and responsible head, with the responsible persons behind each head (SPLY). Above the Head detail table, Head, CRP and Category dropdowns narrow it the same way as on Day wise sales (CRP and Category are available for all stores and same stores on SPLY); footfall and basket are hidden when a CRP or category is chosen. For all stores and same stores, this month and SPLY come from the day-wise file, and the KPIs and the Total row are the day-wise total for every head, so they match Day wise sales; other store groups and SPLM use the Business Performance Report
@@ -14,7 +15,7 @@ The Overview, Category heads and Outlets tabs can be compared with **SPLY** (sam
 
 ## Daily update
 
-1. Replace `..\1. SALES FILE\Business Performance Report.xlsx` and `..\1. SALES FILE\Day wise Sales GP Trend.xlsx` with the new files.
+1. Replace `..\1. SALES FILE\Business Performance Report.xlsx` and `..\1. SALES FILE\Day Wise Sales GP Trend Report.xlsx` with the new files. Keep `Day Wise Val Adj.xlsx` and `Day Wise Val Adj SPLY.xlsx` in `..\..\val adj\autmation for day wise val adj` up to date as well, because GP+OI comes from them.
 2. Double-click **`update.bat`**.
 
 `update.bat` runs `scripts/extract.py` and `scripts/extract_daily.py`, which read the workbooks' values into:
@@ -23,9 +24,15 @@ The Overview, Category heads and Outlets tabs can be compared with **SPLY** (sam
 - `data/months/index.json`: the list of months, used by the Overview's month selector.
 - `data/report.json`: a copy of the latest month, used by the other tabs.
 - `data/daily.json`: each day of the month and the same day last year (sales, GPV, value adj, footfall), for all stores and same stores, per category head and in total. Overwritten each run.
-- `data/daily-detail.json`: the detail rows (division, head, CRP, category level 3) with each day's sales, GPV and value adj, for all stores and same stores. Loaded only when the Day wise sales tab is opened. Footfall is left out because it does not add up across categories. The rows do not add up exactly to the workbook total: a little sales and some value adj sit in the workbook total with no row, and the page shows that gap as its own line.
+- `data/daily-detail.json`: the detail rows (division, head, CRP, category level 3) with each day's sales, GPV and value adj, for all stores and same stores. Loaded only when the Day wise sales tab is opened. Footfall is left out because it does not add up across categories. Rows with no division in the day-wise report are left out; their sales are small and the page shows any gap to the total as its own line.
 
-The day-wise workbook saves GPV as formulas without values, so `extract_daily.py` rebuilds GPV as sales × GP%, the workbook's own formula.
+The day-wise report gives sales, GP% and footfall, with no value adj. `extract_daily.py` works out:
+
+- GPV = sales × GP%, the workbook's own formula.
+- Value adj per division, category level 3, head and CRP from `Day Wise Val Adj.xlsx` (this month) and `Day Wise Val Adj SPLY.xlsx` (last year, looked up by the SPLY date). Same stores use the SPLY SAME OWN and SPLY SAME FRAN columns.
+- GP+OI = GPV + value adj, so GP+OI% = GP% + value adj / sales.
+
+The report has no category role for each head, so the role comes from the monthly report (`data/report.json`); a head that report does not list takes the role of its division.
 
 `update.bat` then commits and pushes the `data` folder. The GitHub Actions workflow (`.github/workflows/pages.yml`) rebuilds the site and publishes it to
 **https://kaziradin.github.io/SHWAPNO_SALES_REPORT/**.

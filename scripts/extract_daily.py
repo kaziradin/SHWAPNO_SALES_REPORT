@@ -1,232 +1,333 @@
-"""Read 'Day wise Sales GP Trend.xlsx' and write data/daily.json: this month day by day, each day
-next to the same day last year, for all stores and for same stores, per category head and in total.
+"""Read the day-wise report and the value adj workbooks and write data/daily.json and data/daily-detail.json:
+this month day by day, each day next to the same day last year, for all stores and for same stores, per
+category head and in total.
 
-The file saves GPV (this month and SPLY) as formulas without their values, so GPV is rebuilt with the
-workbook's own formula, sales x GP%. GPV+OI, GP+OI% and basket are worked out from the saved values
-the same way the workbook does (GP+OI% = GP% + value adj / sales; basket = sales / footfall).
+Sources
+- Day Wise Sales GP Trend Report.xlsx (the newest file in ../1. SALES FILE whose name matches "Day wise Sales GP
+  Trend"): sales, GP% and footfall for this month (THIS) and last year (SPLY), in the day-only, division x head
+  and division x category x head x CRP sheets. The sheets' columns are read from their header rows.
+- Day Wise Val Adj.xlsx and Day Wise Val Adj SPLY.xlsx (in ../../val adj/autmation for day wise val adj): value adj
+  per day and CRP ("Summary Category" sheet). The SPLY file is keyed by the SPLY date.
 
-Usage:  python scripts/extract_daily.py [path-to-xlsx]
-Default input: ../1. SALES FILE/Day wise Sales GP Trend.xlsx (relative to this project).
+Figures
+- GPV = sales x GP%. Value adj is added for GP+OI: GPV+OI = GPV + value adj.
+- Same stores = outlets in both periods (the SPLY SAME OWN and SPLY SAME FRAN value adj columns).
+- Footfall is not in the detail rows: a bill can span several categories, so it does not add up.
+
+Usage:  python scripts/extract_daily.py [path-to-report-xlsx]
 """
 import datetime as dt
 import json
+import re
 import sys
+from collections import defaultdict
 from pathlib import Path
 
 import openpyxl
 
 ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_XLSX = ROOT.parent / "1. SALES FILE" / "Day wise Sales GP Trend.xlsx"
+SALES_FOLDER = ROOT.parent / "1. SALES FILE"
+VAL_FOLDER = ROOT.parent.parent / "val adj" / "autmation for day wise val adj"
+VAL_THIS = VAL_FOLDER / "Day Wise Val Adj.xlsx"
+VAL_SPLY = VAL_FOLDER / "Day Wise Val Adj SPLY.xlsx"
+REPORT_JSON = ROOT / "data" / "report.json"
 OUT = ROOT / "data" / "daily.json"
 DETAIL_OUT = ROOT / "data" / "daily-detail.json"
 
-# store group -> sheet (same block layout in both)
-GROUPS = {"all": "ALL STORE", "same": "SPLY SAME STORE"}
-# block title (column C of the block's header row) -> field
-FIELDS = {
-    "Sales THIS MONTH": "sales",
-    "SPLY Sales": "splySales",
-    "GP% THIS": "gp",
-    "SPLY GP%": "splyGp",
-    "GPV THIS MONTH": "gpv",
-    "SPLY GPV": "splyGpv",
-    "VALUE ADJ THIS MONTH": "valueAdj",
-    "VALUE ADJ SPLY": "splyValueAdj",
-    "FF THIS": "ff",
-    "SPLY FF": "splyFf",
-}
-# written to the JSON; the GP% fields are only used to rebuild GPV
+DAY_SHEET = "5 Day only"
+HEAD_SHEET = "3 Day x Div x Head"
+DETAIL_SHEET = "1 Day x Div x Cat3 x Head x CRP"
+
+# Header rows of the sheets: block (row 3), measure (row 4), period (row 5).
+BLOCKS = {"All store": "all", "Same store": "same"}
+MEASURES = {"Revenue": "sales", "GP%": "gp", "FF": "ff"}
+PERIODS = {"THIS": "this", "THIS (vs SPLY)": "this", "SPLY": "sply"}
+# index of the store group in the value adj sums: all outlets, or same stores
+STORES = {"all": 0, "same": 1}
 OUTPUT = ("sales", "splySales", "gpv", "splyGpv", "valueAdj", "splyValueAdj", "ff", "splyFf")
+DETAIL_FIELDS = ("sales", "splySales", "gpv", "splyGpv", "valueAdj", "splyValueAdj")
+ZERO = (0.0, 0.0)
 
 
 def number(v):
-    # full precision: the GP% fields are ratios and are rounded only where money is written out
+    # full precision; money is rounded only when it is written out
     return float(v) if isinstance(v, (int, float)) else None
+
+
+def text(v):
+    if v is None:
+        return None
+    s = str(v).strip()
+    return s or None
 
 
 def money(values):
     return [round(v, 2) if v is not None else None for v in values]
 
 
-def read_sheet(ws):
-    """Returns (days, heads, total). heads maps (division, role, head) to {field: [value per day]}."""
-    rows = list(ws.iter_rows(values_only=True))
-    days, cols = None, None
-    current = None  # the field of the block being read; None outside the blocks used here
-    heads, total = {}, {}
-    for row in rows:
-        # a block header row has its title in column C and "Category Role" in column D
-        if row[3] == "Category Role" and isinstance(row[2], str):
-            current = FIELDS.get(row[2])
-            if current is None:
-                continue
-            block_cols = [i for i, v in enumerate(row) if isinstance(v, dt.datetime)]
-            if cols is None:
-                cols = block_cols
-                days = [row[i] for i in cols]
-            elif block_cols != cols:
-                raise SystemExit(f"Block '{row[2]}' has different day columns from the first block")
-            continue
-        if current is None or row[2] is None:
-            continue
-        values = [number(row[i]) for i in cols]
-        if row[2] == "Grand Total":
-            total[current] = values
-            continue
-        key = (str(row[2]).strip(), str(row[3]).strip(), str(row[4]).strip())
-        head = heads.setdefault(key, {})
-        if current in head:
-            raise SystemExit(f"Head {key} appears twice in '{current}'")
-        head[current] = values
-    if cols is None:
-        raise SystemExit("No day columns found: the sheet layout has changed")
-    return days, heads, total
+def product(a, b):
+    return a * b if a is not None and b is not None else None
 
 
-def fill_gpv(fields, label):
-    """GPV = sales x GP% (the workbook's formula). Keeps a saved GPV value when the file has one."""
-    for sales, gp, gpv in (("sales", "gp", "gpv"), ("splySales", "splyGp", "splyGpv")):
-        gpv_values = fields.setdefault(gpv, [None] * len(fields[sales]))
-        for i, (s, r) in enumerate(zip(fields[sales], fields[gp])):
-            if gpv_values[i] is None and s is not None and r is not None:
-                gpv_values[i] = round(s * r, 2)
-        missing = [i for i, s in enumerate(fields[sales]) if s is not None and gpv_values[i] is None]
-        if missing:
-            raise SystemExit(f"{label}: no {gpv} for day {missing[0] + 1}; the sheet layout may have changed")
+def find_day_wise(folder=SALES_FOLDER):
+    """The day-wise report. It is replaced with a new file each time and the name can change, so take the
+    newest .xlsx whose name matches. Excel's '~$' lock files are skipped."""
+    matches = sorted(
+        (p for p in folder.glob("*.xlsx")
+         if not p.name.startswith("~$") and re.search(r"day\s*wise\s*sales\s*gp\s*trend", p.name, re.I)),
+        key=lambda p: p.stat().st_mtime, reverse=True)
+    if not matches:
+        raise SystemExit(f"No day-wise report in {folder}: expected a file named like 'Day Wise Sales GP Trend Report.xlsx'")
+    if len(matches) > 1:
+        print("Several day-wise reports found; using the newest. Others: " + ", ".join(p.name for p in matches[1:]))
+    return matches[0]
 
 
-def sply_dates(ws, days):
-    """The SPLY date the workbook compares each THIS day with, from the detail sheet's header rows."""
-    rows = {str(r[0]): r for r in ws.iter_rows(min_row=3, max_row=4, values_only=True) if r[0]}
-    this_row, sply_row = rows["THIS date"], rows["SPLY date (compared)"]
-    cols = [i for i, v in enumerate(this_row) if isinstance(v, dt.datetime)]
+def columns(ws):
+    """(block, field, period) -> column index, read from the sheet's header rows. Only the 'All store' and
+    'Same store' blocks are read; their OWN and FRAN blocks are not used."""
+    block_row, measure_row, period_row = list(ws.iter_rows(min_row=3, max_row=5, values_only=True))
+    found, block = {}, None
+    for i in range(len(block_row)):
+        label = text(block_row[i])
+        if label is not None and label.startswith(("All store", "Same store")):
+            block = BLOCKS.get(label)
+        measure, period = MEASURES.get(text(measure_row[i])), PERIODS.get(text(period_row[i]))
+        if block and measure and period:
+            found[(block, measure, period)] = i
+    needed = [(b, m, p) for b in BLOCKS.values() for m in MEASURES.values() for p in ("this", "sply")]
+    missing = [k for k in needed if k not in found]
+    if missing:
+        raise SystemExit(f"{ws.title}: columns not found for {missing}; the sheet layout may have changed")
+    return found
+
+
+def read_totals(ws):
+    """Day -> {'sply': SPLY date, 'all': {(field, period): value}, 'same': {...}} from the day-only sheet."""
+    cols = columns(ws)
     out = {}
-    for i, day in enumerate(days):
-        c = cols[i]
-        if this_row[c].date() != day.date():
-            raise SystemExit(f"Detail sheet day {this_row[c]:%Y-%m-%d} does not match {day:%Y-%m-%d}")
-        out[day.date()] = sply_row[c].date()
+    for row in ws.iter_rows(min_row=6, values_only=True):
+        if not isinstance(row[0], dt.datetime) or not isinstance(row[1], dt.datetime):
+            continue
+        out[row[0].date()] = {
+            "sply": row[1].date(),
+            **{g: {(m, p): number(row[i]) for (b, m, p), i in cols.items() if b == g} for g in STORES},
+        }
     return out
 
 
-DETAIL_SHEETS = {"all": "ALL STORE DETAIL", "same": "SPLY SAME STORE DETAIL"}
-# detail block title -> field. Footfall and basket are left out: the workbook counts an invoice once per
-# head, so they do not add up across divisions and categories.
-DETAIL_FIELDS = {
-    "Sales THIS MONTH": "sales",
-    "SPLY Sales": "splySales",
-    "GPV THIS MONTH": "gpv",
-    "SPLY GPV": "splyGpv",
-    "VALUE ADJ THIS MONTH": "valueAdj",
-    "VALUE ADJ SPLY": "splyValueAdj",
-}
-DETAIL_TOTAL_ROW = "Grand Total"
-
-
-def read_detail(ws, days):
-    """Rows of a detail sheet. Each value sits on one row only (a division row, a category row with no CRP,
-    or a CRP row), so these rows add up to the sheet's grand total. Returns (leaves, grand_total)."""
-    rows = list(ws.iter_rows(values_only=True))
-    header = next(r for r in rows if r[0] == "Metric")
-    cols = [i for i, v in enumerate(header) if isinstance(v, dt.datetime)]
-    if [header[c].date() for c in cols[: len(days)]] != [d.date() for d in days]:
-        raise SystemExit(f"{ws.title}: day columns do not match the sales sheet")
-    leaves, total = {}, {}
-    for r in rows:
-        field = DETAIL_FIELDS.get(r[0])
-        if field is None or r[1] is None:
+def read_heads(ws):
+    """(day, division, head) -> {(group, field, period): value}, and the heads in the sheet's order.
+    Rows without a head are division totals and are left out."""
+    cols = columns(ws)
+    out, order = {}, []
+    for row in ws.iter_rows(min_row=6, values_only=True):
+        div, head = text(row[3]), text(row[4])
+        if not isinstance(row[0], dt.datetime) or div is None or head is None:
             continue
-        values = [number(r[i]) for i in cols[: len(days)]]
-        if r[1] == DETAIL_TOTAL_ROW:
-            total[field] = values
+        out[(row[0].date(), div, head)] = {k: number(row[i]) for k, i in cols.items()}
+        if (div, head) not in order:
+            order.append((div, head))
+    return out, order
+
+
+def read_leaves(ws):
+    """(day, division, category, head, crp) -> {(group, field, period): value} from the detail sheet, and the
+    sales of rows with no division. A row sits at the level its keys reach (division, category or CRP), and
+    each value sits on one row only, so the rows add up to the sheet's totals."""
+    cols = columns(ws)
+    out, skipped = {}, 0.0
+    for row in ws.iter_rows(min_row=6, values_only=True):
+        if not isinstance(row[0], dt.datetime):
             continue
-        key = tuple(None if v is None else str(v).strip() for v in (r[1], r[2], r[3], r[4]))
-        leaf = leaves.setdefault(key, {})
-        if field in leaf:
-            raise SystemExit(f"{ws.title}: {key} appears twice in '{r[0]}'")
-        leaf[field] = values
-    return leaves, total
+        values = {k: number(row[i]) for k, i in cols.items()}
+        div = text(row[3])
+        if div is None:
+            skipped += values[("all", "sales", "this")] or 0.0
+            continue
+        key = (row[0].date(), div, text(row[4]), text(row[5]), text(row[6]))
+        if key in out:
+            raise SystemExit(f"{ws.title}: {key} appears twice")
+        out[key] = values
+    return out, skipped
 
 
-def check_detail(group, leaves, total, daily_total, n):
-    """Rows should add up to the sheet's grand total. The workbook does not fully manage that: a few hundred
-    taka of sales and some value adj (head 'Unmapped') sit in the grand total with no row, and GPV rows drift
-    from the total late in the month. The gaps are reported and shown on the page; only a large sales gap,
-    which would mean the layout has changed, stops the run."""
-    worst = {}
-    for field in DETAIL_FIELDS.values():
-        worst[field] = max(abs(sum((leaf.get(field, [None] * n)[i] or 0) for leaf in leaves.values())
-                               - (total[field][i] or 0)) for i in range(n))
-    print(f"{group} detail: {len(leaves)} rows; largest row-vs-total gaps (taka): "
-          + ", ".join(f"{k} {v:,.0f}" for k, v in worst.items()))
-    for i in range(n):
-        if abs((total["sales"][i] or 0) - (daily_total["sales"][i] or 0)) > 0.001 * (daily_total["sales"][i] or 0):
-            raise SystemExit(f"{group} detail sales grand total differs from the day-wise sales on day {i + 1}")
-    sales_gap = max(abs(sum((leaf.get("sales", [None] * n)[i] or 0) for leaf in leaves.values())
-                        - (total["sales"][i] or 0)) / (total["sales"][i] or 1) for i in range(n))
-    if sales_gap > 0.001:
-        raise SystemExit(f"{group} detail rows miss more than 0.1% of sales: the layout may have changed")
+def read_value_adj(path):
+    """Rows of the Summary Category sheet: (day, division, category, head, crp, all outlets, same stores)."""
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    rows = wb["Summary Category"].iter_rows(values_only=True)
+    header = [text(h) for h in next(rows)]
+
+    def column(*names):
+        for name in names:
+            if name in header:
+                return header.index(name)
+        raise SystemExit(f"{path.name}: none of {names} in the Summary Category header")
+
+    all_col = column("All Outlets", "Grand Total")
+    same_cols = (column("SPLY SAME OWN"), column("SPLY SAME FRAN"))
+    out = []
+    for row in rows:
+        if not isinstance(row[0], dt.datetime) or text(row[1]) in (None, "Total", "GRAND TOTAL"):
+            continue
+        same = sum(number(row[c]) or 0.0 for c in same_cols)
+        out.append((row[0].date(), text(row[1]), text(row[2]), text(row[3]), text(row[4]),
+                    number(row[all_col]) or 0.0, same))
+    wb.close()
+    return out
+
+
+def value_adj_sums(rows):
+    """Value adj summed by day, by day and head, and by day and CRP. Value adj is only given per CRP, so the
+    head and day sums are the sums of those CRP rows and nothing is counted twice."""
+    total = defaultdict(lambda: [0.0, 0.0])
+    head = defaultdict(lambda: [0.0, 0.0])
+    crp = defaultdict(lambda: [0.0, 0.0])
+    for day, div, cat, hd, c, all_v, same_v in rows:
+        for bucket, key in ((total, day), (head, (day, div, hd)), (crp, (day, div, cat, hd, c))):
+            bucket[key][0] += all_v
+            bucket[key][1] += same_v
+    return {"total": total, "head": head, "crp": crp}
+
+
+def report_roles():
+    """Category role of each head, from the monthly report (the day-wise sheets do not have it). A head the
+    report does not list takes the role of its division."""
+    heads = json.loads(REPORT_JSON.read_text(encoding="utf-8"))["sply"]["heads"]
+    by_head = {(h["division"], h["head"]): h["role"] for h in heads}
+    by_division = {}
+    for h in heads:
+        by_division.setdefault(h["division"], h["role"])
+    return by_head, by_division
 
 
 def main():
-    src = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_XLSX
-    wb = openpyxl.load_workbook(src, read_only=True, data_only=True)
-    sheets = {group: read_sheet(wb[name]) for group, name in GROUPS.items()}
-    dates = sply_dates(wb["ALL STORE DETAIL"], sheets["all"][0])
-    detail_sheets = {group: read_detail(wb[name], sheets["all"][0]) for group, name in DETAIL_SHEETS.items()}
-    wb.close()
+    report = Path(sys.argv[1]) if len(sys.argv) > 1 else find_day_wise()
+    for path in (VAL_THIS, VAL_SPLY):
+        if not path.exists():
+            raise SystemExit(f"Value adj workbook not found: {path}")
+    print(f"Reading {report.name} with the value adj from {VAL_FOLDER.name}")
 
-    days = sheets["all"][0]
-    total_sales = sheets["all"][2]["sales"]
+    wb = openpyxl.load_workbook(report, read_only=True, data_only=True)
+    totals = read_totals(wb[DAY_SHEET])
+    heads, head_order = read_heads(wb[HEAD_SHEET])
+    leaves, skipped = read_leaves(wb[DETAIL_SHEET])
+    wb.close()
+    if skipped:
+        print(f"Rows with no division (not used): sales {skipped:,.0f}")
+
+    this_rows, sply_rows = read_value_adj(VAL_THIS), read_value_adj(VAL_SPLY)
+    va_this, va_sply = value_adj_sums(this_rows), value_adj_sums(sply_rows)
+
     # the last day with a sales figure; later columns are not reported yet
-    last = max(i for i, v in enumerate(total_sales) if v)
-    n = last + 1
+    days = sorted(totals)
+    last = max(i for i, d in enumerate(days) if totals[d]["all"][("sales", "this")])
+    days = days[: last + 1]
+    sply = {d: totals[d]["sply"] for d in days}
+    this_days = {r[0] for r in this_rows}
+    sply_days = {r[0] for r in sply_rows}
+    if [d for d in days if d not in this_days] or [sply[d] for d in days if sply[d] not in sply_days]:
+        raise SystemExit("A day of the report is missing from the value adj workbooks")
+
+    roles_by_head, roles_by_division = report_roles()
+
+    def role(division, head):
+        if (division, head) in roles_by_head:
+            return roles_by_head[(division, head)]
+        print(f"Head {head} ({division}) is not in the monthly report: role taken from its division")
+        return roles_by_division.get(division, "")
 
     out_groups = {}
-    for group, (_, heads, total) in sheets.items():
-        fill_gpv(total, f"{group} total")
-        for key, fields in heads.items():
-            fill_gpv(fields, f"{group} {key[2]}")
-        # how much of the company total the category heads cover (the rest is outside the heads)
-        head_sales = sum(f["sales"][last] or 0 for f in heads.values())
-        group_sales = total["sales"][last]
-        print(f"{group}: {len(heads)} heads, heads cover {head_sales / group_sales:.2%} of sales on day {last + 1}")
-        out_groups[group] = {
-            "total": {k: money(total[k][:n]) for k in OUTPUT},
-            "heads": [
-                {"division": d, "role": r, "head": h, **{k: money(f[k][:n]) for k in OUTPUT}}
-                for (d, r, h), f in heads.items()
-            ],
-        }
+    for g, i in STORES.items():
+        total = {k: [] for k in OUTPUT}
+        for d in days:
+            t = totals[d][g]
+            values = {
+                "sales": t[("sales", "this")], "splySales": t[("sales", "sply")],
+                "gpv": product(t[("sales", "this")], t[("gp", "this")]),
+                "splyGpv": product(t[("sales", "sply")], t[("gp", "sply")]),
+                "valueAdj": va_this["total"].get(d, ZERO)[i],
+                "splyValueAdj": va_sply["total"].get(sply[d], ZERO)[i],
+                "ff": t[("ff", "this")], "splyFf": t[("ff", "sply")],
+            }
+            for k in OUTPUT:
+                total[k].append(values[k])
 
-    period_start, period_end = days[0], days[last]
+        head_rows = []
+        for div, hd in head_order:
+            fields = {k: [] for k in OUTPUT}
+            for d in days:
+                h = heads.get((d, div, hd), {})
+                values = {
+                    "sales": h.get((g, "sales", "this")), "splySales": h.get((g, "sales", "sply")),
+                    "gpv": product(h.get((g, "sales", "this")), h.get((g, "gp", "this"))),
+                    "splyGpv": product(h.get((g, "sales", "sply")), h.get((g, "gp", "sply"))),
+                    "valueAdj": va_this["head"].get((d, div, hd), ZERO)[i],
+                    "splyValueAdj": va_sply["head"].get((sply[d], div, hd), ZERO)[i],
+                    "ff": h.get((g, "ff", "this")), "splyFf": h.get((g, "ff", "sply")),
+                }
+                for k in OUTPUT:
+                    fields[k].append(values[k])
+            head_rows.append({"division": div, "role": role(div, hd), "head": hd,
+                              **{k: money(v) for k, v in fields.items()}})
+
+        # how much of the company total the category heads cover (the rest is outside the heads)
+        head_sales = sum(h["sales"][-1] or 0 for h in head_rows if h["sales"])
+        group_sales = total["sales"][-1] or 1
+        print(f"{g}: {len(head_rows)} heads, heads cover {head_sales / group_sales:.2%} of sales on {days[-1]:%d-%b}")
+        out_groups[g] = {"total": {k: money(v) for k, v in total.items()}, "heads": head_rows}
+
+    period_start, period_end = days[0], days[-1]
     out = {
         "generatedAt": dt.datetime.now().isoformat(timespec="seconds"),
-        "sourceFile": src.name,
-        "asOf": period_end.date().isoformat(),
+        "sourceFile": report.name,
+        "asOf": period_end.isoformat(),
         "periodLabel": f"{period_start:%b} {period_start.day}-{period_end.day} {period_end.year}",
-        "days": [{"date": d.date().isoformat(), "sply": dates[d.date()].isoformat()} for d in days[:n]],
+        "days": [{"date": d.isoformat(), "sply": sply[d].isoformat()} for d in days],
         "groups": out_groups,
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
-    print(f"As of {out['asOf']} | {out['periodLabel']} | {n} days | saved {OUT}")
+    print(f"As of {out['asOf']} | {out['periodLabel']} | {len(days)} days | saved {OUT}")
 
-    # detail rows: one per division, category or CRP; zero-only rows are left out
+    # detail rows: one per division, category or CRP. Value adj is given per CRP only.
+    keys = list(dict.fromkeys(
+        [k[1:] for k in leaves] + [k[1:] for k in va_this["crp"]] + [k[1:] for k in va_sply["crp"]]))
     detail_groups = {}
-    for group, (leaves, total) in detail_sheets.items():
-        check_detail(group, leaves, total, out_groups[group]["total"], n)
+    for g, i in STORES.items():
         rows = []
-        for (division, category, head, crp), fields in leaves.items():
-            trimmed = {k: money(fields.get(k, [None] * n)[:n]) for k in DETAIL_FIELDS.values()}
-            if not any(v for values in trimmed.values() for v in values):
+        for key in keys:
+            div, cat, hd, c = key
+            vals = {k: [] for k in DETAIL_FIELDS}
+            for d in days:
+                leaf = leaves.get((d, *key), {})
+                s, ss = leaf.get((g, "sales", "this")), leaf.get((g, "sales", "sply"))
+                gp, sgp = leaf.get((g, "gp", "this")), leaf.get((g, "gp", "sply"))
+                vals["sales"].append(s)
+                vals["splySales"].append(ss)
+                vals["gpv"].append(product(s, gp))
+                vals["splyGpv"].append(product(ss, sgp))
+                vals["valueAdj"].append(va_this["crp"].get((d, *key), ZERO)[i])
+                vals["splyValueAdj"].append(va_sply["crp"].get((sply[d], *key), ZERO)[i])
+            if not any(v for values in vals.values() for v in values if v):
                 continue
-            rows.append({"division": division, "category": category, "head": head, "crp": crp, **trimmed})
-        detail_groups[group] = rows
-        print(f"{group}: {len(rows)} detail rows")
+            rows.append({"division": div, "category": cat, "head": hd, "crp": c,
+                         **{k: money(v) for k, v in vals.items()}})
+        detail_groups[g] = rows
+
+        # the rows should add up to the day totals; the value adj gap is value adj that has no row
+        for n, d in enumerate(days):
+            row_sales = sum(r["sales"][n] or 0 for r in rows)
+            total_sales = out_groups[g]["total"]["sales"][n] or 0
+            if abs(row_sales - total_sales) > 0.001 * total_sales:
+                raise SystemExit(f"{g} detail sales differ from the day total on {d:%d-%b} by {row_sales - total_sales:,.0f}")
+        va_gap = [round((out_groups[g]["total"]["valueAdj"][n] or 0) - sum(r["valueAdj"][n] or 0 for r in rows))
+                  for n in range(len(days))]
+        print(f"{g}: {len(rows)} detail rows; value adj not on any row (taka): {va_gap}")
+
     detail = {
         "generatedAt": out["generatedAt"],
-        "sourceFile": src.name,
+        "sourceFile": report.name,
         "asOf": out["asOf"],
         "groups": detail_groups,
     }
