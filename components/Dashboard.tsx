@@ -122,7 +122,7 @@ export default function Dashboard({ report, months, daily }: { report: Report; m
           <Overview data={monthData} cmp={cmp} segment={segment} />
         </>
       )}
-      {tab === "heads" && <Heads report={report} cmp={cmp} daily={daily} />}
+      {tab === "heads" && <Heads report={report} cmp={cmp} daily={daily} onCmp={setCmp} />}
       {tab === "daily" && <Daily daily={daily} />}
       {tab === "outlets" && <Outlets outlets={report.outlets} cmp={cmp} />}
 
@@ -348,16 +348,16 @@ function withDailyHeads(rows: HeadRow[], dailyHeads: DailyHead[]): HeadRow[] {
   });
 }
 
-function Heads({ report, cmp, daily }: { report: Report; cmp: Cmp; daily: DailyData }) {
+function Heads({ report, cmp, daily, onCmp }: { report: Report; cmp: Cmp; daily: DailyData; onCmp: (c: Cmp) => void }) {
   const s = CMP_LABEL[cmp].short;
   const reportBlocks = report[cmp].headBlocks ?? {};
-  const blocks: Partial<Record<SegmentKey, HeadRow[]>> = cmp === "sply"
-    ? {
-        ...reportBlocks,
-        all: withDailyHeads(reportBlocks.all ?? [], daily.groups.all.heads),
-        same: withDailyHeads(reportBlocks.same ?? [], daily.groups.same.heads),
-      }
-    : reportBlocks;
+  // all stores and same stores come from the day-wise file, against last year or last month, so they match the Day wise tab
+  const dayGroups = cmp === "sply" ? daily.groups : daily.splmGroups;
+  const blocks: Partial<Record<SegmentKey, HeadRow[]>> = {
+    ...reportBlocks,
+    all: withDailyHeads(reportBlocks.all ?? [], dayGroups.all.heads),
+    same: withDailyHeads(reportBlocks.same ?? [], dayGroups.same.heads),
+  };
   const keys = (Object.keys(SEGMENT_LABELS) as SegmentKey[]).filter((k) => blocks[k]?.length);
   const [drill, setDrill] = useState<HeadRow | null>(null);
   const [seg, setSeg] = useState<SegmentKey>("all");
@@ -376,19 +376,22 @@ function Heads({ report, cmp, daily }: { report: Report; cmp: Cmp; daily: DailyD
     });
     return () => { live = false; };
   }, []);
-  // the drill-down uses the Cat 3 sheet, which is SPLY only
-  useEffect(() => { if (cmp !== "sply") setDrill(null); }, [cmp]);
-  if (drill && cmp === "sply") {
+  if (drill) {
     const headSame = (blocks.same ?? []).find((x) => x.division === drill.division && x.head === drill.head);
-    return <HeadDrill head={drill} headSame={headSame} cat={report.cat3 ?? []} seg={seg} onBack={() => setDrill(null)} />;
+    // the responsible persons and categories come from the day-wise detail, for last year and last month alike,
+    // so they match the head table and the Day wise tab
+    const cat = cat3FromDetail(detail, cmp, drill);
+    return <HeadDrill head={drill} headSame={headSame} cat={cat} seg={seg} cmp={cmp} onCmp={onCmp} onBack={() => setDrill(null)} />;
   }
 
   const baseHeads = blocks[seg] ?? [];
   const headKeyOf = (x: { division: string; head: string | null }) => `${x.division}|${x.head ?? ""}`;
   const baseKeys = new Set(baseHeads.map(headKeyOf));
   // CRP and category need the detail rows, which cover SPLY for all stores and same stores
-  const canDetail = cmp === "sply" && (seg === "all" || seg === "same") && Boolean(detail);
-  const detailRows: DetailRow[] = canDetail ? (detail?.groups[seg as "all" | "same"] ?? []).filter((r) => baseKeys.has(headKeyOf(r))) : [];
+  const canDetail = (seg === "all" || seg === "same") && Boolean(detail);
+  const detailRows: DetailRow[] = canDetail
+    ? ((cmp === "sply" ? detail?.groups : detail?.splmGroups)?.[seg as "all" | "same"] ?? []).filter((r) => baseKeys.has(headKeyOf(r)))
+    : [];
   const rowsFor = (headK: string, crpV: string, catV: string) =>
     detailRows.filter((r) => (!headK || headKeyOf(r) === headK) && (!crpV || r.crp === crpV) && (!catV || r.category === catV));
   // each choice is kept only while rows still match it, so a choice never gives an empty table
@@ -550,7 +553,7 @@ function Heads({ report, cmp, daily }: { report: Report; cmp: Cmp; daily: DailyD
         <div className="ov-table-scroll">
           <table className="ov-table">
             <caption>
-              Category heads vs {s}. {cmp === "sply" ? "Click a head to see its responsible persons and categories. " : "Responsible persons are available on SPLY. "}Click a heading to sort.
+              Category heads vs {s}. Click a head to see its responsible persons and categories. Click a heading to sort.
             </caption>
             <thead>
               <tr>
@@ -575,7 +578,7 @@ function Heads({ report, cmp, daily }: { report: Report; cmp: Cmp; daily: DailyD
                   <td className="l" style={{ textAlign: "left" }}>{r.division}</td>
                   <td className="l" style={{ textAlign: "left" }}>{roleName(r.role)}</td>
                   <th scope="row" style={{ textAlign: "left" }}>
-                    {cmp === "sply" ? <button className="linkish" onClick={() => setDrill(r)}>{r.head} ›</button> : r.head}
+                    <button className="linkish" onClick={() => setDrill(r)}>{r.head} ›</button>
                   </th>
                   {shownWide.map((m) => <WideCells key={m.label} m={m} r={r} />)}
                 </tr>
@@ -622,6 +625,44 @@ function Heads({ report, cmp, daily }: { report: Report; cmp: Cmp; daily: DailyD
       {rows.length === 0 && <p className="hint">No category heads for this store group.</p>}
     </div>
   );
+}
+
+/** The Cat 3 rows of one head for the drill-down, from the day-wise detail: the month to date, for all stores and for
+ *  same stores, against last year or last month. Last month has no monthly Cat 3 figures, so it is built from here. */
+function cat3FromDetail(detail: DailyDetailData | null, cmp: Cmp, head: HeadRow): Cat3Row[] {
+  if (!detail) return [];
+  const groups = cmp === "sply" ? detail.groups : detail.splmGroups;
+  const sum = (v: (number | null)[]) => v.reduce<number>((t, x) => t + (x ?? 0), 0);
+  const isHead = (r: DetailRow) => r.division === head.division && r.head === head.head && r.crp != null && r.category != null;
+  const out = new Map<string, Cat3Row>();
+  const rowFor = (r: DetailRow): Cat3Row => {
+    const key = `${r.crp}\u001f${r.category}`;
+    let c = out.get(key);
+    if (!c) {
+      c = {
+        division: r.division, cat1: "", cat3: r.category ?? "", crp: r.crp ?? "", head: r.head ?? "",
+        sales: 0, salesLy: 0, sameSales: 0, sameSalesLy: 0, gp: null, gpLy: null,
+        gpv: 0, gpvLy: 0, gpvOi: 0, gpvOiLy: 0, sameGpv: 0, sameGpvLy: 0, sameGpvOi: 0, sameGpvOiLy: 0,
+      };
+      out.set(key, c);
+    }
+    return c;
+  };
+  for (const r of groups.all.filter(isHead)) {
+    Object.assign(rowFor(r), {
+      sales: sum(r.sales), salesLy: sum(r.splySales),
+      gpv: sum(r.gpv), gpvLy: sum(r.splyGpv),
+      gpvOi: sum(r.gpv) + sum(r.valueAdj), gpvOiLy: sum(r.splyGpv) + sum(r.splyValueAdj),
+    });
+  }
+  for (const r of groups.same.filter(isHead)) {
+    Object.assign(rowFor(r), {
+      sameSales: sum(r.sales), sameSalesLy: sum(r.splySales),
+      sameGpv: sum(r.gpv), sameGpvLy: sum(r.splyGpv),
+      sameGpvOi: sum(r.gpv) + sum(r.valueAdj), sameGpvOiLy: sum(r.splyGpv) + sum(r.splyValueAdj),
+    });
+  }
+  return [...out.values()];
 }
 
 /* ------------------------------------------------------------------ head drill-down: Cat 3 by responsible person */
@@ -705,7 +746,10 @@ function sortCompare(x: { name: string; a: Agg }, y: { name: string; a: Agg }, s
   return (sortValue(x.a, sort.key) - sortValue(y.a, sort.key)) * m;
 }
 
-function HeadDrill({ head, headSame, cat, seg, onBack }: { head: HeadRow; headSame: HeadRow | undefined; cat: Cat3Row[]; seg: SegmentKey; onBack: () => void }) {
+function HeadDrill({ head, headSame, cat, seg, cmp, onCmp, onBack }: {
+  head: HeadRow; headSame: HeadRow | undefined; cat: Cat3Row[]; seg: SegmentKey; cmp: Cmp; onCmp: (c: Cmp) => void; onBack: () => void;
+}) {
+  const s = CMP_LABEL[cmp].short;
   const [level, setLevel] = useState<Level>(seg === "same" ? "same" : "all");
   const [crp, setCrp] = useState("");
   const [catName, setCatName] = useState("");
@@ -753,11 +797,11 @@ function HeadDrill({ head, headSame, cat, seg, onBack }: { head: HeadRow; headSa
 
   const exportDrill = () => {
     const metricCols: ExportCol[] = [
-      { header: "Sales", format: "money" }, { header: "Sales SPLY", format: "money" }, { header: "Sales growth", format: "pct" },
-      { header: "GPV", format: "money" }, { header: "GPV SPLY", format: "money" }, { header: "GPV growth", format: "pct" },
-      { header: "GP%", format: "pct" }, { header: "GP% SPLY", format: "pct" }, { header: "GP% change", format: "pct" },
-      { header: "GPV+OI", format: "money" }, { header: "GPV+OI SPLY", format: "money" }, { header: "GPV+OI growth", format: "pct" },
-      { header: "GP+OI%", format: "pct" }, { header: "GP+OI% SPLY", format: "pct" }, { header: "GP+OI% change", format: "pct" },
+      { header: "Sales", format: "money" }, { header: `Sales ${s}`, format: "money" }, { header: "Sales growth", format: "pct" },
+      { header: "GPV", format: "money" }, { header: `GPV ${s}`, format: "money" }, { header: "GPV growth", format: "pct" },
+      { header: "GP%", format: "pct" }, { header: `GP% ${s}`, format: "pct" }, { header: "GP% change", format: "pct" },
+      { header: "GPV+OI", format: "money" }, { header: `GPV+OI ${s}`, format: "money" }, { header: "GPV+OI growth", format: "pct" },
+      { header: "GP+OI%", format: "pct" }, { header: `GP+OI% ${s}`, format: "pct" }, { header: "GP+OI% change", format: "pct" },
     ];
     const cols: ExportCol[] = [
       { header: "Responsible person", format: "text" }, { header: "Category (Cat 3)", format: "text" },
@@ -802,11 +846,16 @@ function HeadDrill({ head, headSame, cat, seg, onBack }: { head: HeadRow; headSa
         <div>
           <button className="linkish" onClick={onBack}>← Back to all heads</button>
           <h2 style={{ marginTop: 8 }}>{head.head}</h2>
-          <p className="hint">{nm(head.division)} · {head.role} · responsible persons and categories (Cat 3) · SPLY · {level === "all" ? "all stores" : "same stores"}</p>
+          <p className="hint">{nm(head.division)} · {head.role} · responsible persons and categories (Cat 3) · {s} · {level === "all" ? "all stores" : "same stores"}</p>
         </div>
       </div>
       <div className="xbar"><ExportButton onClick={exportDrill} /></div>
       <div className="drill-filters">
+        <div className="seg" role="group" aria-label="Comparison period">
+          {(["sply", "splm"] as Cmp[]).map((c) => (
+            <button key={c} aria-pressed={cmp === c} onClick={() => onCmp(c)} title={CMP_LABEL[c].long}>vs {CMP_LABEL[c].short}</button>
+          ))}
+        </div>
         <div className="seg" role="group" aria-label="Store level">
           <button aria-pressed={level === "all"} onClick={() => { setLevel("all"); setCrp(""); setCatName(""); setOpen(new Set()); setSort({ key: "sales", dir: "desc" }); }}>All stores</button>
           <button aria-pressed={level === "same"} onClick={() => { setLevel("same"); setCrp(""); setCatName(""); setOpen(new Set()); setSort({ key: "sales", dir: "desc" }); }}>Same stores</button>
@@ -861,7 +910,7 @@ function HeadDrill({ head, headSame, cat, seg, onBack }: { head: HeadRow; headSa
                   </tr>
                   {isOpen && g.rs.map((x, i) => (
                     <tr key={g.name + i}>
-                      <td className="l"><div>{nm(x.r.cat3)}</div><div className="sub">{nm(x.r.cat1)}</div></td>
+                      <td className="l"><div>{nm(x.r.cat3)}</div>{x.r.cat1 && <div className="sub">{nm(x.r.cat1)}</div>}</td>
                       <MetricCells a={x.a} />
                     </tr>
                   ))}
