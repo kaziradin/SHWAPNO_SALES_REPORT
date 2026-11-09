@@ -346,10 +346,6 @@ td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .dh .dh-c3 { left: 202px; width: 160px; min-width: 160px; max-width: 160px; text-align: left; white-space: normal; line-height: 1.3; font-weight: 600; }
 .dh .dh-c3 { box-shadow: 4px 0 6px -4px rgba(15, 39, 68, 0.22); }
 .dh thead th.dh-c3 { box-shadow: 4px 0 6px -4px rgba(15, 39, 68, 0.22); }
-/* the drill-down rows under a head: responsible persons, then their categories */
-.dh tr.dh-sub td, .dh tr.dh-sub th { background: #F7F9FC; }
-.dh .dh-crp { padding-left: 20px; font-weight: 500; }
-.dh .dh-cat { padding-left: 40px; font-weight: 400; color: #334155; }
 
 /* Day wise sales: a compact KPI band (the Overview keeps its larger cards) */
 .day-kpis { padding: 8px; gap: 6px; margin-bottom: 10px; border-radius: 10px; }

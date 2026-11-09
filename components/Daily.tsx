@@ -10,7 +10,7 @@ import {
 } from "@/lib/daily";
 import DailyDetail from "./DailyDetail";
 import DayLines, { type DayPoint } from "./DayLines";
-import DayHeads, { type DayCrpRow, type DayHeadRow } from "./DayHeads";
+import DayHeads, { DayHeadDrill, type DayCrpRow, type DayHeadRow } from "./DayHeads";
 
 const STORE_GROUP_LABEL: Record<StoreGroup, string> = { all: "All stores", same: "Same stores" };
 const TYPE_LABEL: Record<StoreType, string> = { all: "Own and franchise", own: "Own stores", fran: "Franchise stores" };
@@ -84,6 +84,8 @@ export default function Daily({ daily }: { daily: DailyData }) {
   const [crp, setCrp] = useState("");
   const [cat, setCat] = useState("");
   const [detail, setDetail] = useState<DailyDetailData | null>(null);
+  // the head whose drill-down is open under the head table ("division|head"), or empty for the table
+  const [openHead, setOpenHead] = useState<string>("");
 
   // the detail rows are a separate data file; they give the CRP and category lists, the figures when either is chosen,
   // and the detail table
@@ -208,6 +210,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
     // the divisions in the order the detail table lists them, and the heads alphabetically within each
     .sort((a, b) => SHOWN_DIVISIONS.indexOf(a.division) - SHOWN_DIVISIONS.indexOf(b.division) || a.head.localeCompare(b.head));
   const headTotalLabel = headSel ? "Total (selected head)" : fromRows ? "Total (filtered rows)" : "Total (all divisions)";
+  const drillRow = headTable.find((h) => `${h.division}|${h.head}` === openHead);
   const toggleFocus = (date: string) => setFocus((f) => (f === date ? "" : date));
   const colClass = (date: string) => [isFriSat(date) ? "wk" : "", date === focus ? "sel" : ""].filter(Boolean).join(" ") || undefined;
 
@@ -358,11 +361,17 @@ export default function Daily({ daily }: { daily: DailyData }) {
 
       <div className="ov-section-head"><h2>Category heads</h2></div>
       <p className="ov-note">
-        {selectionLabel}, {STORE_LABEL[group].toLowerCase()}, {periodName}, compared with {compareName}. Click + to see a head's responsible persons, and a person's categories.
+        {selectionLabel}, {STORE_LABEL[group].toLowerCase()}, {periodName}, compared with {compareName}. Click a head's › to see its responsible persons and their categories.
         {!headSel && !fromRows && " The total covers every division, including sales with no head, so it can be a little above the sum of the heads."}
       </p>
-      <DayHeads rows={headTable} total={{ f: total, x: totalX }} totalLabel={headTotalLabel} showFootfall={!fromRows}
-        cmpShort={CMP_SHORT[cmp]} caption={`Category heads for ${periodName}, ${STORE_LABEL[group].toLowerCase()}, vs ${CMP_SHORT[cmp]}.`} />
+      {drillRow ? (
+        <DayHeadDrill head={drillRow} cmpShort={CMP_SHORT[cmp]} scopeText={`${STORE_LABEL[group].toLowerCase()}, ${periodName}`}
+          onBack={() => setOpenHead("")} />
+      ) : (
+        <DayHeads rows={headTable} total={{ f: total, x: totalX }} totalLabel={headTotalLabel} showFootfall={!fromRows}
+          cmpShort={CMP_SHORT[cmp]} caption={`Category heads for ${periodName}, ${STORE_LABEL[group].toLowerCase()}, vs ${CMP_SHORT[cmp]}.`}
+          onOpen={setOpenHead} />
+      )}
 
       <div className="ov-section-head"><h2>Day by day</h2></div>
       <div className="xbar"><ExportButton onClick={exportDays} /></div>
