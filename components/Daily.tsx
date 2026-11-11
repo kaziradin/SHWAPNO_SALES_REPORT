@@ -229,6 +229,15 @@ export default function Daily({ daily }: { daily: DailyData }) {
     const d = difference(n, l);
     return { delta: signedPct(d, 2), t: toneOfNum(d) };
   };
+  // a count (footfall) changes by a number of bills and a growth; basket changes by growth only
+  const countDelta = (n: number | null, l: number | null) => {
+    const gr = growth(n, l), d = difference(n, l);
+    return { delta: `${d == null ? "–" : `${d >= 0 ? "+" : "−"}${full(Math.abs(d))}`}   ${arrowOf(toneOfNum(gr))}${signedPct(gr, 2)}`, t: toneOfNum(gr) };
+  };
+  const growthDelta = (n: number | null, l: number | null) => {
+    const gr = growth(n, l);
+    return { delta: `${arrowOf(toneOfNum(gr))}${signedPct(gr, 2)}`, t: toneOfNum(gr) };
+  };
   const cr = (v: number | null) => (v == null ? "–" : crFmt(v));
   const kpi = [
     { label: "Sales", value: cr(shownF.sales), sply: `${CMP_SHORT[cmp]}: ${cr(shownF.splySales)}`, ...moneyDelta(shownF.sales, shownF.splySales) },
@@ -236,6 +245,10 @@ export default function Daily({ daily }: { daily: DailyData }) {
     { label: "GPV", value: cr(shownF.gpv), sply: `${CMP_SHORT[cmp]}: ${cr(shownF.splyGpv)}`, ...moneyDelta(shownF.gpv, shownF.splyGpv) },
     { label: "GP+OI%", value: pct(shownX.goi, 2), sply: `${CMP_SHORT[cmp]}: ${pct(shownX.splyGoi, 2)}`, ...pointDelta(shownX.goi, shownX.splyGoi) },
     { label: "GPV+OI", value: cr(shownF.gpvOi), sply: `${CMP_SHORT[cmp]}: ${cr(shownF.splyGpvOi)}`, ...moneyDelta(shownF.gpvOi, shownF.splyGpvOi) },
+    { label: "Footfall", value: fromRows ? "–" : full(shownF.ff), sply: `${CMP_SHORT[cmp]}: ${fromRows ? "–" : full(shownF.splyFf)}`,
+      ...(fromRows ? { delta: "", t: "flat" } : countDelta(shownF.ff, shownF.splyFf)) },
+    { label: "Basket", value: fromRows ? "–" : full(shownX.bs), sply: `${CMP_SHORT[cmp]}: ${fromRows ? "–" : full(shownX.splyBs)}`,
+      ...(fromRows ? { delta: "", t: "flat" } : growthDelta(shownX.bs, shownX.splyBs)) },
   ];
 
   const shown = (m: Metric, v: number | null) => (m.kind === "ratio" ? pct(v, 2) : m.crore ? crOrDash(v) : full(v));
@@ -338,7 +351,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
           style={{ alignSelf: "flex-end", paddingBottom: 8, whiteSpace: "nowrap" }}>Reset all filters</button>
       </div>
 
-      <section className="ov-kpis five day-kpis" aria-label="Day wise sales key figures">
+      <section className="ov-kpis day-kpis" aria-label="Day wise sales key figures">
         {kpi.map((k) => (
           <div className="ov-kpi" key={k.label}>
             <div className="ov-kpi-label">{k.label}</div>
