@@ -5,7 +5,7 @@ import type { DailyData, DailyDetailData, DailyHead, DayFields, DetailRow, Store
 import { abbrOf, arrowOf, crFmt, crOrDash, crSigned, full, growth, pct, roleName, signedPct, titleCase, toneOfNum } from "@/lib/format";
 import { downloadExcel, ExportButton, type ExportCell, type ExportCol } from "@/lib/export";
 import {
-  Cell, dayFieldsOfRows, dayLong, dayMonth, dayWeekday, difference, diffChg, Figures, growthChg, isFriSat, MTD, Ratios, ratiosOf,
+  Cell, dayFieldsOfRows, dayLong, dayMonth, dayWeekday, difference, diffChg, Figures, growthChg, isFriSat, Ratios, ratiosOf,
   CMP_SHORT, CMP_WORD, Cmp, SHOWN_DIVISIONS, STORE_LABEL, storeKey, StoreGroup, StoreType, sumFigures, uniqSorted,
 } from "@/lib/daily";
 import DailyDetail from "./DailyDetail";
@@ -16,8 +16,6 @@ import DayByHead from "./DayByHead";
 const STORE_GROUP_LABEL: Record<StoreGroup, string> = { all: "All stores", same: "Same stores" };
 const TYPE_LABEL: Record<StoreType, string> = { all: "Own and franchise", own: "Own stores", fran: "Franchise stores" };
 const TOTAL = "total";
-/** The Period choice that takes the dates typed in From and To. */
-const RANGE = "range";
 
 /** A day of the month: its figures, and the date of the comparison day (last year's or last month's). */
 type DayRow = { date: string; prev: string; f: Figures; x: Ratios };
@@ -70,7 +68,6 @@ const seriesOf = (rows: DayRow[], pick: (r: DayRow) => [number | null, number | 
 
 export default function Daily({ daily }: { daily: DailyData }) {
   const firstDate = daily.days[0].date, lastDate = daily.days[daily.days.length - 1].date;
-  const [period, setPeriod] = useState<string>(MTD);
   const [from, setFrom] = useState<string>(firstDate);
   const [to, setTo] = useState<string>(lastDate);
   // a day clicked in the Day by day table: the KPIs and charts show that day, the table keeps its view
@@ -147,24 +144,20 @@ export default function Daily({ daily }: { daily: DailyData }) {
     const f = dayFigures(source, i);
     return { date: d.date, prev: cmp === "sply" ? d.sply : d.splm, f, x: ratiosOf(f) };
   });
-  // the days the Period choice covers: the whole month so far, one day, or the dates from From to To in either order
+  // the days from From to To, in either order; by default the latest period, the whole data so far
   const lo = from <= to ? from : to, hi = from <= to ? to : from;
-  const chosenIdx = rows.map((_, i) => i).filter((i) => {
-    const date = rows[i].date;
-    if (period === MTD) return true;
-    if (period === RANGE) return date >= lo && date <= hi;
-    return date === period;
-  });
+  const isLatest = lo === firstDate && hi === lastDate;
+  const chosenIdx = rows.map((_, i) => i).filter((i) => rows[i].date >= lo && rows[i].date <= hi);
   const chosen = chosenIdx.map((i) => rows[i]);
   // the totals, the KPI band and the table follow the chosen days; the charts keep the whole month and mark them
   const total = sumFigures(chosen.map((r) => r.f));
   const totalX = ratiosOf(total);
   const withTotal = chosen.length > 1;
-  const band = period === MTD ? undefined : period === RANGE ? { from: lo, to: hi } : { from: period, to: period };
-  const totalLabel = period === MTD ? "Month to date" : period === RANGE ? "Selected period" : "Selected day";
-  const periodName = period === MTD ? `Month to date (${daily.periodLabel})`
-    : period === RANGE ? `${dayLong(lo)} to ${dayLong(hi)}`
-    : dayLong(period);
+  const band = isLatest ? undefined : { from: lo, to: hi };
+  const totalLabel = isLatest ? "Month to date" : lo === hi ? "Selected day" : "Selected period";
+  const periodName = isLatest ? `Month to date (${daily.periodLabel})`
+    : lo === hi ? dayLong(lo)
+    : `${dayLong(lo)} to ${dayLong(hi)}`;
   // last year's days matched with the chosen days, as the workbook matches them
   const splys = chosen.map((r) => r.prev).sort();
   const compareName = chosen.length === 1 ? dayLong(splys[0])
@@ -271,25 +264,14 @@ export default function Daily({ daily }: { daily: DailyData }) {
             ))}
           </div>
         </div>
-        <label>Period
-          <select value={period} onChange={(e) => { setPeriod(e.target.value); setFocus(""); }} aria-label="Period">
-            <option value={MTD}>Month to date ({daily.periodLabel})</option>
-            <option value={RANGE}>Date range (From and To)</option>
-            {[...daily.days].reverse().map((d) => <option key={d.date} value={d.date}>{dayLong(d.date)}</option>)}
-          </select>
+        <label>From
+          <input type="date" value={from} min={firstDate} max={lastDate} aria-label="From date"
+            onChange={(e) => { if (e.target.value) { setFrom(e.target.value); setFocus(""); } }} />
         </label>
-        {period === RANGE && (
-          <>
-            <label>From
-              <input type="date" value={from} min={firstDate} max={lastDate} aria-label="From date"
-                onChange={(e) => e.target.value && setFrom(e.target.value)} />
-            </label>
-            <label>To
-              <input type="date" value={to} min={firstDate} max={lastDate} aria-label="To date"
-                onChange={(e) => e.target.value && setTo(e.target.value)} />
-            </label>
-          </>
-        )}
+        <label>To
+          <input type="date" value={to} min={firstDate} max={lastDate} aria-label="To date"
+            onChange={(e) => { if (e.target.value) { setTo(e.target.value); setFocus(""); } }} />
+        </label>
         <label>Store group
           <select value={store} onChange={(e) => onGroup(e.target.value as StoreGroup, type)} aria-label="Store group">
             {(Object.keys(STORE_GROUP_LABEL) as StoreGroup[]).map((k) => <option key={k} value={k}>{STORE_GROUP_LABEL[k]}</option>)}
@@ -333,7 +315,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
       <p className="ov-note">
         {selectionLabel}, {STORE_LABEL[group].toLowerCase()}, {periodName}.{" "}
         {chosen.length ? `Each day is compared with the same day ${CMP_WORD[cmp]}.` : "No days fall in this range; choose dates inside the data period."}
-        {period === RANGE && from > to && " The two dates were swapped, so the range runs from the earlier to the later date."}
+        {from > to && " The two dates were swapped, so the range runs from the earlier to the later date."}
         {fromRows && " Footfall and basket are hidden when a CRP or category is chosen: a bill with items from several categories would be counted more than once."}
       </p>
       {focusRow && (
