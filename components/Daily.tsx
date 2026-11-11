@@ -279,10 +279,10 @@ export default function Daily({ daily }: { daily: DailyData }) {
   const cr = (v: number | null) => (v == null ? "–" : crFmt(v));
   const kpi = [
     { label: "Sales", value: cr(shownF.sales), sply: `${CMP_SHORT[cmp]}: ${cr(shownF.splySales)}`, ...moneyDelta(shownF.sales, shownF.splySales) },
-    { label: "GPV", value: cr(shownF.gpv), sply: `${CMP_SHORT[cmp]}: ${cr(shownF.splyGpv)}`, ...moneyDelta(shownF.gpv, shownF.splyGpv) },
-    { label: "GPV+OI", value: cr(shownF.gpvOi), sply: `${CMP_SHORT[cmp]}: ${cr(shownF.splyGpvOi)}`, ...moneyDelta(shownF.gpvOi, shownF.splyGpvOi) },
     { label: "GP%", value: pct(shownX.gp, 2), sply: `${CMP_SHORT[cmp]}: ${pct(shownX.splyGp, 2)}`, ...pointDelta(shownX.gp, shownX.splyGp) },
     { label: "GP+OI%", value: pct(shownX.goi, 2), sply: `${CMP_SHORT[cmp]}: ${pct(shownX.splyGoi, 2)}`, ...pointDelta(shownX.goi, shownX.splyGoi) },
+    { label: "GPV", value: cr(shownF.gpv), sply: `${CMP_SHORT[cmp]}: ${cr(shownF.splyGpv)}`, ...moneyDelta(shownF.gpv, shownF.splyGpv) },
+    { label: "GPV+OI", value: cr(shownF.gpvOi), sply: `${CMP_SHORT[cmp]}: ${cr(shownF.splyGpvOi)}`, ...moneyDelta(shownF.gpvOi, shownF.splyGpvOi) },
     { label: "Footfall", value: ffShown ? kFmt(shownF.ff) : "–", sply: `${CMP_SHORT[cmp]}: ${ffShown ? kFmt(shownF.splyFf) : "–"}`,
       ...(ffShown ? countDelta(shownF.ff, shownF.splyFf) : { delta: "", t: "flat" }) },
     { label: "Basket", value: ffShown ? full(shownX.bs) : "–", sply: `${CMP_SHORT[cmp]}: ${ffShown ? full(shownX.splyBs) : "–"}`,
