@@ -455,8 +455,8 @@ function Heads({ report, cmp, daily, onCmp }: { report: Report; cmp: Cmp; daily:
   const rows = fromDetail
     ? sortHeads(headRowsFromDetail(rowsFor(headSelKey, crpSel, catSel)), hsort)
     : sortHeads(headSelKey ? baseHeads.filter((h) => headKeyOf(h) === headSelKey) : baseHeads, hsort);
-  // the wide table drops footfall and basket when a CRP or category is chosen
-  const shownWide = fromDetail ? WIDE.filter((m) => !m.needsFootfall) : WIDE;
+  // footfall and basket stay in the table; a dash where they cannot be counted exactly for the CRP or category chosen
+  const shownWide = WIDE;
   const sum = (f: (r: HeadRow) => number | null | undefined) => rows.reduce((t, r) => t + (f(r) ?? 0), 0);
   // all stores and same stores take their totals from the day-wise file, which covers every head, so the figures here
   // match the Day wise sales tab; the other store groups add up the heads

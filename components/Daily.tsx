@@ -416,7 +416,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
         {selectionLabel}, {STORE_LABEL[group].toLowerCase()}, {periodName}.{" "}
         {chosen.length ? `Each day is compared with the same day ${CMP_WORD[cmp]}.` : "No days fall in this range; choose dates inside the data period."}
         {from > to && " The two dates were swapped, so the range runs from the earlier to the later date."}
-        {!ffShown && " Footfall and basket show a dash here: a category across several persons, or a person under more than one head, would count some bills twice."}
+        {!ffShown && " Footfall and basket show a dash here: the bills for this selection cannot be counted exactly, so they are left blank."}
       </p>
       {focusRow && (
         <p className="ov-note">
