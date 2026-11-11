@@ -7,7 +7,7 @@ import {
 } from "@/lib/format";
 import { DivergingBars, useTooltip, useWidth, type TipRow } from "./charts";
 import { downloadExcel, ExportButton, type ExportCell, type ExportCol } from "@/lib/export";
-import { uniqSorted } from "@/lib/daily";
+import { headlessWithin, uniqSorted } from "@/lib/daily";
 import FilterBar, { CMP_LABEL, SEGMENT_LABELS, type Cmp } from "./FilterBar";
 import Overview from "./Overview";
 import Daily from "./Daily";
@@ -402,10 +402,16 @@ function Heads({ report, cmp, daily, onCmp }: { report: Report; cmp: Cmp; daily:
     const rowsOf = (k: StoreKey | undefined): DetailRow[] => (detail && k ? (cmp === "sply" ? detail.groups : detail.splmGroups)[k] ?? [] : []);
     const personsOf = (k: StoreKey | undefined): CrpFf[] => (detail && k ? (cmp === "sply" ? detail.crpFfGroups : detail.splmCrpFfGroups)[k] ?? [] : [])
       .filter((p) => p.division === drill.division && p.head === drill.head);
-    const headlessOf = (k: StoreKey | undefined): Set<string> => new Set(rowsOf(k)
-      .filter((r) => r.division === drill.division && (r.crp == null || r.head == null)
-        && [r.ff, r.splyFf, r.sales, r.splySales].some((a) => a.some((v) => v)))
-      .flatMap((r) => (r.category ? [r.category] : [])));
+    // bills with no CRP, per category, in the drill's division: [this period, last year]
+    const headlessOf = (k: StoreKey | undefined): Map<string, [number, number]> => {
+      const m = new Map<string, [number, number]>();
+      for (const r of rowsOf(k)) {
+        if (r.division !== drill.division || (r.crp != null && r.head != null) || !r.category) continue;
+        const [a, b] = m.get(r.category) ?? [0, 0];
+        m.set(r.category, [a + (sumNull(r.ff) ?? 0), b + (sumNull(r.splyFf) ?? 0)]);
+      }
+      return m;
+    };
     return <HeadDrill head={drill} headSame={headSame} cat={cat} seg={seg} cmp={cmp} onCmp={onCmp} onBack={() => setDrill(null)}
       personAll={personsOf(fam?.all)} personSame={personsOf(fam?.same)} headlessAll={headlessOf(fam?.all)} headlessSame={headlessOf(fam?.same)} />;
   }
@@ -790,8 +796,8 @@ function HeadDrill({ head, headSame, cat, seg, cmp, onCmp, onBack, personAll, pe
   head: HeadRow; headSame: HeadRow | undefined; cat: Cat3Row[]; seg: SegmentKey; cmp: Cmp; onCmp: (c: Cmp) => void; onBack: () => void;
   /** Footfall of each person under the head, for all stores and for same stores (exact per person). */
   personAll: CrpFf[]; personSame: CrpFf[];
-  /** Categories with rows that have no CRP or no head, for all stores and for same stores. */
-  headlessAll: Set<string>; headlessSame: Set<string>;
+  /** Bills with no CRP, per category, for all stores and for same stores: [this period, last year]. */
+  headlessAll: Map<string, [number, number]>; headlessSame: Map<string, [number, number]>;
 }) {
   const s = CMP_LABEL[cmp].short;
   // the segment's own name and its same-store version, for the subtitle and the starting level
@@ -834,7 +840,9 @@ function HeadDrill({ head, headSame, cat, seg, cmp, onCmp, onBack, personAll, pe
     if (crp) return catName ? sumPair(filtered.map(ffAt)) : personFfOf(crp);
     if (catName) {
       const people = new Set(filtered.map((r) => r.crp));
-      return people.size === 1 && !headless.has(catName) ? sumPair(filtered.map(ffAt)) : [null, null];
+      const seller = filtered.reduce<[number, number]>((t, r) => [t[0] + (ffAt(r)[0] ?? 0), t[1] + (ffAt(r)[1] ?? 0)], [0, 0]);
+      return people.size === 1 && headlessWithin(seller, headless.get(catName) ?? [0, 0])
+        ? sumPair(filtered.map(ffAt)) : [null, null];
     }
     return level === "all" ? [head.ff ?? null, head.ffLast ?? null] : [headSame?.ff ?? null, headSame?.ffLast ?? null];
   };

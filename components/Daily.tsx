@@ -6,7 +6,7 @@ import { abbrOf, arrowOf, crFmt, crOrDash, crSigned, full, growth, pct, roleName
 import { downloadExcel, ExportButton, type ExportCell, type ExportCol } from "@/lib/export";
 import {
   Cell, dayFieldsOfRows, dayLong, dayMonth, dayWeekday, difference, diffChg, Figures, growthChg, isFriSat, Ratios, ratiosOf,
-  CMP_SHORT, CMP_WORD, Cmp, SHOWN_DIVISIONS, STORE_LABEL, storeKey, StoreGroup, StoreType, sumFigures, uniqSorted,
+  CMP_SHORT, CMP_WORD, Cmp, headlessWithin, SHOWN_DIVISIONS, STORE_LABEL, storeKey, StoreGroup, StoreType, sumFigures, uniqSorted,
 } from "@/lib/daily";
 import DailyDetail from "./DailyDetail";
 import DayLines, { type DayPoint } from "./DayLines";
@@ -136,18 +136,21 @@ export default function Daily({ daily }: { daily: DailyData }) {
       return cats.length === 1 ? cats[0] : null;
     }
     if (sel.cat) {
-      // A category with no CRP chosen is exact only when one CRP sells it in the scope chosen (then every bill with that
-      // category is that CRP's), and no row without a head or CRP holds it. Such a row has bills that no CRP row has, so
-      // they cannot be counted from the CRP rows. Rows with only value adj (such as 'Unmapped') have no bills and do not count.
+      // A category with no CRP chosen is counted from its one seller in the scope chosen: every bill with that category is
+      // then that CRP's. Bills with no CRP (rows with no head or CRP) cannot be placed on a CRP, so the seller's figure is
+      // shown only when those are at most HEADLESS_LIMIT of the category's bills. Rows with only value adj (such as
+      // 'Unmapped') have no bills and do not count.
       const inDivision = (r: DetailRow) => (sel.head ? r.division === sel.head.division : !sel.division || r.division === sel.division);
       const rowsOfCat = listedRows(detailRows(group)).filter((r) => r.category === sel.cat && inDivision(r));
-      const withoutCrp = rowsOfCat.some((r) => (r.crp == null || r.head == null)
-        && (r.ff.some((v) => v) || r.splyFf.some((v) => v) || r.sales.some((v) => v) || r.splySales.some((v) => v)));
-      if (withoutCrp) return null;
+      const total = (a: (number | null)[]) => a.reduce<number>((t, v) => t + (v ?? 0), 0);
+      const billsOf = (rs: DetailRow[]): [number, number] => rs.reduce<[number, number]>(
+        (t, r) => [t[0] + total(r.ff), t[1] + total(r.splyFf)], [0, 0]);
       const sellers = rowsOfCat.filter((r) => r.crp != null && r.head != null && (!sel.head || r.head === sel.head.head)
         && (r.ff.some((v) => v) || r.splyFf.some((v) => v)));
       const people = new Set(sellers.map((r) => `${r.division}|${r.head}|${r.crp}`));
-      return people.size === 1 ? sellers[0] : null;
+      if (people.size !== 1) return null;
+      const headless = billsOf(rowsOfCat.filter((r) => r.crp == null || r.head == null));
+      return headlessWithin(billsOf(sellers), headless) ? sellers[0] : null;
     }
     if (sel.head) return sel.head;
     if (sel.division) return divisionFf(group).find((d) => d.division === sel.division) ?? null;

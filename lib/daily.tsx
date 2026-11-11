@@ -33,6 +33,15 @@ export const SHOWN_DIVISIONS = ["COMPANY GOODS", "PACKED COMMODITY", "LOOSE COMM
 export const uniqSorted = (values: (string | null)[]) =>
   [...new Set(values.filter((v): v is string => v != null))].sort((a, b) => a.localeCompare(b));
 
+/** The most bills with no CRP, as a share of a category's bills, that still lets one CRP's footfall stand for the category. */
+export const HEADLESS_LIMIT = 0.01;
+
+/** True when the bills with no CRP are at most HEADLESS_LIMIT of the bills, this period and last year. Pairs are [this period, last year]. */
+export function headlessWithin(seller: [number, number], headless: [number, number]): boolean {
+  const ok = (s: number, h: number) => s + h === 0 || h / (s + h) <= HEADLESS_LIMIT;
+  return ok(seller[0], headless[0]) && ok(seller[1], headless[1]);
+}
+
 /** Day fields summed over detail rows, for a head or CRP choice. Footfall is not in the detail rows, so it stays blank. */
 export function dayFieldsOfRows(rows: DetailRow[], n: number): DayFields {
   const sum = (pick: (r: DetailRow) => (number | null)[]) =>
