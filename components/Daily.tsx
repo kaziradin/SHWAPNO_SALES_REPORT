@@ -229,10 +229,12 @@ export default function Daily({ daily }: { daily: DailyData }) {
     const d = difference(n, l);
     return { delta: signedPct(d, 2), t: toneOfNum(d) };
   };
+  // footfall in thousands of bills, for example 1,886.9K
+  const kFmt = (v: number | null) => (v == null ? "–" : `${(v / 1000).toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}K`);
   // a count (footfall) changes by a number of bills and a growth; basket changes by growth only
   const countDelta = (n: number | null, l: number | null) => {
     const gr = growth(n, l), d = difference(n, l);
-    return { delta: `${d == null ? "–" : `${d >= 0 ? "+" : "−"}${full(Math.abs(d))}`}   ${arrowOf(toneOfNum(gr))}${signedPct(gr, 2)}`, t: toneOfNum(gr) };
+    return { delta: `${d == null ? "–" : `${d >= 0 ? "+" : "−"}${kFmt(Math.abs(d))}`}   ${arrowOf(toneOfNum(gr))}${signedPct(gr, 2)}`, t: toneOfNum(gr) };
   };
   const growthDelta = (n: number | null, l: number | null) => {
     const gr = growth(n, l);
@@ -245,7 +247,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
     { label: "GPV", value: cr(shownF.gpv), sply: `${CMP_SHORT[cmp]}: ${cr(shownF.splyGpv)}`, ...moneyDelta(shownF.gpv, shownF.splyGpv) },
     { label: "GP+OI%", value: pct(shownX.goi, 2), sply: `${CMP_SHORT[cmp]}: ${pct(shownX.splyGoi, 2)}`, ...pointDelta(shownX.goi, shownX.splyGoi) },
     { label: "GPV+OI", value: cr(shownF.gpvOi), sply: `${CMP_SHORT[cmp]}: ${cr(shownF.splyGpvOi)}`, ...moneyDelta(shownF.gpvOi, shownF.splyGpvOi) },
-    { label: "Footfall", value: fromRows ? "–" : full(shownF.ff), sply: `${CMP_SHORT[cmp]}: ${fromRows ? "–" : full(shownF.splyFf)}`,
+    { label: "Footfall", value: fromRows ? "–" : kFmt(shownF.ff), sply: `${CMP_SHORT[cmp]}: ${fromRows ? "–" : kFmt(shownF.splyFf)}`,
       ...(fromRows ? { delta: "", t: "flat" } : countDelta(shownF.ff, shownF.splyFf)) },
     { label: "Basket", value: fromRows ? "–" : full(shownX.bs), sply: `${CMP_SHORT[cmp]}: ${fromRows ? "–" : full(shownX.splyBs)}`,
       ...(fromRows ? { delta: "", t: "flat" } : growthDelta(shownX.bs, shownX.splyBs)) },
