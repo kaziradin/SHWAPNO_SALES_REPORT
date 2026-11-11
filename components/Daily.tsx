@@ -78,6 +78,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
   const group = storeKey(store, type);
   // the figures are compared with the same day last year (SPLY) or the same day last month (SPLM)
   const [cmp, setCmp] = useState<Cmp>("sply");
+  const [division, setDivision] = useState("");
   const [head, setHead] = useState<string>(TOTAL);
   const [crp, setCrp] = useState("");
   const [cat, setCat] = useState("");
@@ -104,7 +105,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
   const listedRows = (rs: DailyDetailData["groups"]["all"] | undefined) => (rs ?? []).filter((r) => SHOWN_DIVISIONS.includes(r.division));
   const rowsOfHead = (h: DailyHead | null, rs = listedRows(detailRows(group))) =>
     (h ? rs.filter((r) => r.division === h.division && r.head === h.head) : rs);
-  const headRows = rowsOfHead(headSel);
+  const headRows = rowsOfHead(headSel).filter((r) => !division || r.division === division);
   // a CRP belongs to a head and the CRP and category lists narrow each other, so a choice always has rows behind it;
   // one that no longer fits is ignored
   const crpSel = crp && headRows.some((r) => r.crp === crp) ? crp : "";
@@ -112,17 +113,28 @@ export default function Daily({ daily }: { daily: DailyData }) {
   const crpOptions = uniqSorted(headRows.filter((r) => !catSel || r.category === catSel).map((r) => r.crp));
   const catOptions = uniqSorted(headRows.filter((r) => !crpSel || r.crp === crpSel).map((r) => r.category));
   // with a CRP or category chosen the figures are the sum of the matching detail rows, which have no footfall
-  const fromRows = Boolean(crpSel || catSel);
+  const fromRows = Boolean(crpSel || catSel || division);
   const source: DayFields = fromRows
     ? dayFieldsOfRows(headRows.filter((r) => (!crpSel || r.crp === crpSel) && (!catSel || r.category === catSel)), daily.days.length)
     : headSel ?? g.total;
-  const headText = headSel ? headLabel(headSel) : "All category heads";
+  const headText = headSel ? headLabel(headSel) : division ? `All heads in ${titleCase(division)}` : "All category heads";
   const selectionLabel = [headText, crpSel && `CRP ${crpSel}`, catSel && `category ${titleCase(catSel)}`].filter(Boolean).join(", ");
   const metrics = fromRows ? METRICS.filter((m) => !m.footfall) : METRICS;
+  // the figures of the chosen division for the day-by-head table's total row
+  const divisionTotal = division
+    ? dayFieldsOfRows(listedRows(detailRows(group)).filter((r) => r.division === division), daily.days.length)
+    : null;
 
   const onHead = (v: string) => {
     setHead(v);
     const rs = rowsOfHead(g.heads.find((x) => headKey(x) === v) ?? null);
+    if (crpSel && !rs.some((r) => r.crp === crpSel)) setCrp("");
+    if (catSel && !rs.some((r) => r.category === catSel)) setCat("");
+  };
+  const onDivision = (v: string) => {
+    setDivision(v);
+    if (headSel && v && headSel.division !== v) setHead(TOTAL);
+    const rs = listedRows(detailRows(group)).filter((r) => !v || r.division === v);
     if (crpSel && !rs.some((r) => r.crp === crpSel)) setCrp("");
     if (catSel && !rs.some((r) => r.category === catSel)) setCat("");
   };
@@ -194,6 +206,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
   // the head table under the charts: each head's figures for the chosen days, with the same filters as the tab
   const headTable: DayHeadRow[] = g.heads
     .filter((h) => !headSel || headKey(h) === headKey(headSel))
+    .filter((h) => !division || h.division === division)
     .flatMap((h) => {
       const rs = fromRows ? rowsOfHead(h).filter((r) => (!crpSel || r.crp === crpSel) && (!catSel || r.category === catSel)) : [];
       if (fromRows && rs.length === 0) return [];
@@ -282,10 +295,16 @@ export default function Daily({ daily }: { daily: DailyData }) {
             {(Object.keys(TYPE_LABEL) as StoreType[]).map((k) => <option key={k} value={k}>{TYPE_LABEL[k]}</option>)}
           </select>
         </label>
+        <label>Division
+          <select value={division} onChange={(e) => onDivision(e.target.value)} aria-label="Division">
+            <option value="">All divisions</option>
+            {SHOWN_DIVISIONS.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
+          </select>
+        </label>
         <label className="day-head">Category head
           <select value={head} onChange={(e) => onHead(e.target.value)} aria-label="Category head">
             <option value={TOTAL}>All category heads</option>
-            {g.heads.map((h) => <option key={headKey(h)} value={headKey(h)}>{headLabel(h)}</option>)}
+            {g.heads.filter((h) => !division || h.division === division).map((h) => <option key={headKey(h)} value={headKey(h)}>{headLabel(h)}</option>)}
           </select>
         </label>
         <label>CRP
@@ -294,7 +313,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
             {crpOptions.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </label>
-        <label>Category
+        <label>Category (Cat 3)
           <select value={catSel} onChange={(e) => setCat(e.target.value)} aria-label="Category" disabled={!detail}>
             <option value="">{detail ? "All categories" : "Loading…"}</option>
             {catOptions.map((c) => <option key={c} value={c}>{c === "0" ? "(not set)" : titleCase(c)}</option>)}
@@ -316,7 +335,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
         {selectionLabel}, {STORE_LABEL[group].toLowerCase()}, {periodName}.{" "}
         {chosen.length ? `Each day is compared with the same day ${CMP_WORD[cmp]}.` : "No days fall in this range; choose dates inside the data period."}
         {from > to && " The two dates were swapped, so the range runs from the earlier to the later date."}
-        {fromRows && " Footfall and basket are hidden when a CRP or category is chosen: a bill with items from several categories would be counted more than once."}
+        {fromRows && " Footfall and basket are hidden when a division, CRP or category is chosen: a bill with items from several categories would be counted more than once."}
       </p>
       {focusRow && (
         <p className="ov-note">
@@ -357,7 +376,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
       )}
 
       <div className="ov-section-head"><h2>Day by day, by head</h2></div>
-      <DayByHead heads={g.heads} totalF={g.total} detailRows={detailRows(group) ?? []} days={daily.days} cmpShort={CMP_SHORT[cmp]}
+      <DayByHead heads={division ? g.heads.filter((h) => h.division === division) : g.heads} totalF={divisionTotal ?? g.total} detailRows={detailRows(group) ?? []} days={daily.days} cmpShort={CMP_SHORT[cmp]}
         scope={`${STORE_LABEL[group].toLowerCase()}, each day of ${daily.periodLabel}, vs ${CMP_SHORT[cmp]}`} />
 
       <div className="ov-section-head"><h2>Day by day</h2></div>
