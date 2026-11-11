@@ -1,16 +1,17 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { crFmt, crSigned, growth, pct, signedPct, toneOfNum } from "@/lib/format";
+import { crFmt, crSigned, full, growth, pct, signedPct, toneOfNum } from "@/lib/format";
 import { dayLong, dayNum, dayShort, difference } from "@/lib/daily";
 import { useTooltip, useWidth, type TipRow } from "./charts";
 
 export type DayPoint = { date: string; sply: string; now: number | null; prev: number | null };
 
 /** One line per series, one point per day: this month (navy) against the same day last year (grey).
- *  Money is in crore, ratios in percent. Move the pointer anywhere over the chart to read that day's figures. */
+ *  Money is in crore, ratios in percent, counts (footfall, basket) as whole numbers. Move the pointer anywhere over the chart
+ *  to read that day's figures. */
 export default function DayLines({ title, kind, points, total, band, totalLabel = "Month to date", prevWord = "last year" }: {
-  title: string; kind: "money" | "pct"; points: DayPoint[]; total: { now: number | null; prev: number | null };
+  title: string; kind: "money" | "pct" | "count"; points: DayPoint[]; total: { now: number | null; prev: number | null };
   /** The days chosen in the Period list (one day or a date range), marked with a band. */
   band?: { from: string; to: string };
   /** What the summary line calls the chosen days. */
@@ -23,7 +24,7 @@ export default function DayLines({ title, kind, points, total, band, totalLabel 
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<number | null>(null);
   const H = 240, top = 14, bottom = 26, left = 66, right = 14;
-  const fmt = (v: number) => (kind === "money" ? crFmt(v) : pct(v, 2));
+  const fmt = (v: number) => (kind === "money" ? crFmt(v) : kind === "count" ? full(v) : pct(v, 2));
   const values = points.flatMap((p) => [p.now, p.prev]).filter((v): v is number => v != null);
   const lo0 = values.length ? Math.min(...values) : 0;
   const hi0 = values.length ? Math.max(...values) : 1;
@@ -78,9 +79,9 @@ export default function DayLines({ title, kind, points, total, band, totalLabel 
     const rows: TipRow[] = [
       ["This day", p.now == null ? "–" : fmt(p.now)],
       [`Same day ${prevWord}`, p.prev == null ? "–" : fmt(p.prev)],
-      ["Difference", d == null ? "–" : kind === "money" ? crSigned(d) : signedPct(d, 2)],
+      ["Difference", d == null ? "–" : kind === "money" ? crSigned(d) : kind === "count" ? `${d >= 0 ? "+" : "−"}${full(Math.abs(d))}` : signedPct(d, 2)],
     ];
-    if (kind === "money") rows.push(["Change", signedPct(growth(p.now, p.prev), 2)]);
+    if (kind !== "pct") rows.push(["Change", signedPct(growth(p.now, p.prev), 2)]);
     return rows;
   };
   const onMove = (e: React.MouseEvent<SVGRectElement>) => {
@@ -95,8 +96,8 @@ export default function DayLines({ title, kind, points, total, band, totalLabel 
   };
 
   // month to date against the same days last year, with the change in the same units as the chart
-  const change = kind === "money" ? growth(total.now, total.prev) : difference(total.now, total.prev);
-  const valueText = (v: number | null) => (kind === "money" ? (v == null ? "–" : crFmt(v)) : pct(v, 2));
+  const change = kind === "pct" ? difference(total.now, total.prev) : growth(total.now, total.prev);
+  const valueText = (v: number | null) => (v == null ? "–" : fmt(v));
 
   return (
     <div className="ov-panel">

@@ -279,10 +279,10 @@ export default function Daily({ daily }: { daily: DailyData }) {
   const cr = (v: number | null) => (v == null ? "–" : crFmt(v));
   const kpi = [
     { label: "Sales", value: cr(shownF.sales), sply: `${CMP_SHORT[cmp]}: ${cr(shownF.splySales)}`, ...moneyDelta(shownF.sales, shownF.splySales) },
-    { label: "GP%", value: pct(shownX.gp, 2), sply: `${CMP_SHORT[cmp]}: ${pct(shownX.splyGp, 2)}`, ...pointDelta(shownX.gp, shownX.splyGp) },
-    { label: "GP+OI%", value: pct(shownX.goi, 2), sply: `${CMP_SHORT[cmp]}: ${pct(shownX.splyGoi, 2)}`, ...pointDelta(shownX.goi, shownX.splyGoi) },
     { label: "GPV", value: cr(shownF.gpv), sply: `${CMP_SHORT[cmp]}: ${cr(shownF.splyGpv)}`, ...moneyDelta(shownF.gpv, shownF.splyGpv) },
     { label: "GPV+OI", value: cr(shownF.gpvOi), sply: `${CMP_SHORT[cmp]}: ${cr(shownF.splyGpvOi)}`, ...moneyDelta(shownF.gpvOi, shownF.splyGpvOi) },
+    { label: "GP%", value: pct(shownX.gp, 2), sply: `${CMP_SHORT[cmp]}: ${pct(shownX.splyGp, 2)}`, ...pointDelta(shownX.gp, shownX.splyGp) },
+    { label: "GP+OI%", value: pct(shownX.goi, 2), sply: `${CMP_SHORT[cmp]}: ${pct(shownX.splyGoi, 2)}`, ...pointDelta(shownX.goi, shownX.splyGoi) },
     { label: "Footfall", value: ffShown ? kFmt(shownF.ff) : "–", sply: `${CMP_SHORT[cmp]}: ${ffShown ? kFmt(shownF.splyFf) : "–"}`,
       ...(ffShown ? countDelta(shownF.ff, shownF.splyFf) : { delta: "", t: "flat" }) },
     { label: "Basket", value: ffShown ? full(shownX.bs) : "–", sply: `${CMP_SHORT[cmp]}: ${ffShown ? full(shownX.splyBs) : "–"}`,
@@ -427,6 +427,14 @@ export default function Daily({ daily }: { daily: DailyData }) {
           <DayLines title="Day wise GP+OI%" kind="pct" points={seriesOf(rows, (r) => [r.x.goi, r.x.splyGoi])}
             total={{ now: shownX.goi, prev: shownX.splyGoi }} band={chartBand} totalLabel={chartTotalLabel} prevWord={CMP_WORD[cmp]} />
         </div>
+        {ffShown && (
+          <div className="day-pair">
+            <DayLines title="Day wise footfall" kind="count" points={seriesOf(rows, (r) => [r.f.ff, r.f.splyFf])}
+              total={{ now: shownF.ff, prev: shownF.splyFf }} band={chartBand} totalLabel={chartTotalLabel} prevWord={CMP_WORD[cmp]} />
+            <DayLines title="Day wise basket" kind="count" points={seriesOf(rows, (r) => [r.x.bs, r.x.splyBs])}
+              total={{ now: shownX.bs, prev: shownX.splyBs }} band={chartBand} totalLabel={chartTotalLabel} prevWord={CMP_WORD[cmp]} />
+          </div>
+        )}
       </div>
 
       <div className="ov-section-head"><h2>Category heads</h2></div>
