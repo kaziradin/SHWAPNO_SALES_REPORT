@@ -136,14 +136,16 @@ export default function Daily({ daily }: { daily: DailyData }) {
       return cats.length === 1 ? cats[0] : null;
     }
     if (sel.cat) {
-      // a category with no CRP chosen: exact when one CRP sells it in the scope chosen, because every bill with that
-      // category is then that CRP's. When two or more CRPs sell it, a bill could be counted once for each of them: a dash.
-      // A row counts as a seller only if it has bills this period or last year: a row with only value adj (such as
-      // 'Unmapped') has no bills and does not change the count.
-      const sellers = listedRows(detailRows(group)).filter((r) => r.category === sel.cat && r.crp != null && r.head != null
-        && (r.ff.some((v) => v) || r.splyFf.some((v) => v))
-        && (!sel.division || r.division === sel.division)
-        && (!sel.head || (r.division === sel.head.division && r.head === sel.head.head)));
+      // A category with no CRP chosen is exact only when one CRP sells it in the scope chosen (then every bill with that
+      // category is that CRP's), and no row without a head or CRP holds it. Such a row has bills that no CRP row has, so
+      // they cannot be counted from the CRP rows. Rows with only value adj (such as 'Unmapped') have no bills and do not count.
+      const inDivision = (r: DetailRow) => (sel.head ? r.division === sel.head.division : !sel.division || r.division === sel.division);
+      const rowsOfCat = listedRows(detailRows(group)).filter((r) => r.category === sel.cat && inDivision(r));
+      const withoutCrp = rowsOfCat.some((r) => (r.crp == null || r.head == null)
+        && (r.ff.some((v) => v) || r.splyFf.some((v) => v) || r.sales.some((v) => v) || r.splySales.some((v) => v)));
+      if (withoutCrp) return null;
+      const sellers = rowsOfCat.filter((r) => r.crp != null && r.head != null && (!sel.head || r.head === sel.head.head)
+        && (r.ff.some((v) => v) || r.splyFf.some((v) => v)));
       const people = new Set(sellers.map((r) => `${r.division}|${r.head}|${r.crp}`));
       return people.size === 1 ? sellers[0] : null;
     }
