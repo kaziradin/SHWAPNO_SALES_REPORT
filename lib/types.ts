@@ -41,6 +41,8 @@ export type Cat3Row = {
   gpvOi: number | null; gpvOiLy: number | null;
   sameGpv: number | null; sameGpvLy: number | null;
   sameGpvOi: number | null; sameGpvOiLy: number | null;
+  /** Footfall (distinct bills) of the row: this month, last year, and the same-store versions. Exact for one person's category row. */
+  ff?: number | null; ffLy?: number | null; sameFf?: number | null; sameFfLy?: number | null;
 };
 
 /** The slice of a monthly snapshot the Overview needs (keeps the page payload small). */

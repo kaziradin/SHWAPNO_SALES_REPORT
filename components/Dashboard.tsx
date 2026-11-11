@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useState } from "react";
-import type { Cat3Row, DailyData, DailyDetailData, DailyHead, DetailRow, HeadRow, Metrics, MonthOverview, Outlet, Report, SegmentKey, StoreKey } from "@/lib/types";
+import type { Cat3Row, CrpFf, DailyData, DailyDetailData, DailyHead, DetailRow, HeadRow, Metrics, MonthOverview, Outlet, Report, SegmentKey, StoreKey } from "@/lib/types";
 import {
   abbrOf, arrowOf, crFmt, crOrDash, crSigned, diff, growth, int, longDate, monthName, pct, pp, roleName, signedPct, titleCase, toneOfNum,
 } from "@/lib/format";
@@ -396,7 +396,18 @@ function Heads({ report, cmp, daily, onCmp }: { report: Report; cmp: Cmp; daily:
     // the responsible persons and categories come from the day-wise detail, for last year and last month alike,
     // so they match the head table and the Day wise tab
     const cat = cat3FromDetail(detail, cmp, drill, seg);
-    return <HeadDrill head={drill} headSame={headSame} cat={cat} seg={seg} cmp={cmp} onCmp={onCmp} onBack={() => setDrill(null)} />;
+    // footfall of the persons under this head, and the rows with no CRP or no head (their bills are not on any CRP row),
+    // from the same day-wise detail; the drill uses them for its footfall and basket columns
+    const fam = familyOf(seg);
+    const rowsOf = (k: StoreKey | undefined): DetailRow[] => (detail && k ? (cmp === "sply" ? detail.groups : detail.splmGroups)[k] ?? [] : []);
+    const personsOf = (k: StoreKey | undefined): CrpFf[] => (detail && k ? (cmp === "sply" ? detail.crpFfGroups : detail.splmCrpFfGroups)[k] ?? [] : [])
+      .filter((p) => p.division === drill.division && p.head === drill.head);
+    const headlessOf = (k: StoreKey | undefined): Set<string> => new Set(rowsOf(k)
+      .filter((r) => r.division === drill.division && (r.crp == null || r.head == null)
+        && [r.ff, r.splyFf, r.sales, r.splySales].some((a) => a.some((v) => v)))
+      .flatMap((r) => (r.category ? [r.category] : [])));
+    return <HeadDrill head={drill} headSame={headSame} cat={cat} seg={seg} cmp={cmp} onCmp={onCmp} onBack={() => setDrill(null)}
+      personAll={personsOf(fam?.all)} personSame={personsOf(fam?.same)} headlessAll={headlessOf(fam?.all)} headlessSame={headlessOf(fam?.same)} />;
   }
 
   const baseHeads = blocks[seg] ?? [];
@@ -642,6 +653,10 @@ function Heads({ report, cmp, daily, onCmp }: { report: Report; cmp: Cmp; daily:
   );
 }
 
+/** A sum of day values; blank when no day has a value. */
+const sumNull = (v: (number | null)[] | undefined): number | null =>
+  (v && v.some((x) => x != null) ? v.reduce<number>((t, x) => t + (x ?? 0), 0) : null);
+
 /** The Cat 3 rows of one head for the drill-down, from the day-wise detail: the month to date, for all stores and for
  *  same stores, against last year or last month. Last month has no monthly Cat 3 figures, so it is built from here. */
 function cat3FromDetail(detail: DailyDetailData | null, cmp: Cmp, head: HeadRow, seg: SegmentKey): Cat3Row[] {
@@ -658,7 +673,7 @@ function cat3FromDetail(detail: DailyDetailData | null, cmp: Cmp, head: HeadRow,
     if (!c) {
       c = {
         division: r.division, cat1: "", cat3: r.category ?? "", crp: r.crp ?? "", head: r.head ?? "",
-        sales: 0, salesLy: 0, sameSales: 0, sameSalesLy: 0, gp: null, gpLy: null,
+        sales: 0, salesLy: 0, sameSales: 0, sameSalesLy: 0, gp: null, gpLy: null, ff: null, ffLy: null, sameFf: null, sameFfLy: null,
         gpv: 0, gpvLy: 0, gpvOi: 0, gpvOiLy: 0, sameGpv: 0, sameGpvLy: 0, sameGpvOi: 0, sameGpvOiLy: 0,
       };
       out.set(key, c);
@@ -670,6 +685,7 @@ function cat3FromDetail(detail: DailyDetailData | null, cmp: Cmp, head: HeadRow,
       sales: sum(r.sales), salesLy: sum(r.splySales),
       gpv: sum(r.gpv), gpvLy: sum(r.splyGpv),
       gpvOi: sum(r.gpv) + sum(r.valueAdj), gpvOiLy: sum(r.splyGpv) + sum(r.splyValueAdj),
+      ff: sumNull(r.ff), ffLy: sumNull(r.splyFf),
     });
   }
   for (const r of same.filter(isHead)) {
@@ -677,6 +693,7 @@ function cat3FromDetail(detail: DailyDetailData | null, cmp: Cmp, head: HeadRow,
       sameSales: sum(r.sales), sameSalesLy: sum(r.splySales),
       sameGpv: sum(r.gpv), sameGpvLy: sum(r.splyGpv),
       sameGpvOi: sum(r.gpv) + sum(r.valueAdj), sameGpvOiLy: sum(r.splyGpv) + sum(r.splyValueAdj),
+      sameFf: sumNull(r.ff), sameFfLy: sumNull(r.splyFf),
     });
   }
   return [...out.values()];
@@ -731,11 +748,15 @@ function PointChange({ now, last }: { now: number | null; last: number | null })
   return <span className={`delta ${t}`}>{t === "up" ? "▲ " : t === "down" ? "▼ " : ""}{signedPct(d, 2)}</span>;
 }
 
-function MetricCells({ a }: { a: Agg }) {
+/** The drill's measure cells: the five money and ratio figures, then footfall and basket (sales per bill, in taka). */
+function MetricCells({ a, ff }: { a: Agg; ff: [number | null, number | null] }) {
   const gp = a.s ? a.gpv / a.s : null;
   const gpl = a.sl ? a.gpvl / a.sl : null;
   const goi = a.s ? a.goi / a.s : null;
   const goil = a.sl ? a.goil / a.sl : null;
+  const [f, fl] = ff;
+  const bs = f ? a.s / f : null;
+  const bsl = fl ? a.sl / fl : null;
   return (
     <>
       <td><div>{crFmt(a.s)}</div><div><Growth now={a.s} last={a.sl} /></div></td>
@@ -743,6 +764,8 @@ function MetricCells({ a }: { a: Agg }) {
       <td><div>{pct(gp, 2)}</div><div><PointChange now={gp} last={gpl} /></div></td>
       <td><div>{crFmt(a.goi)}</div><div><Growth now={a.goi} last={a.goil} /></div></td>
       <td><div>{pct(goi, 2)}</div><div><PointChange now={goi} last={goil} /></div></td>
+      <td><div>{f == null ? "–" : fm(f)}</div><div><Growth now={f ?? 0} last={fl ?? 0} /></div></td>
+      <td><div>{bs == null ? "–" : fm(bs)}</div><div><Growth now={bs ?? 0} last={bsl ?? 0} /></div></td>
     </>
   );
 }
@@ -763,8 +786,12 @@ function sortCompare(x: { name: string; a: Agg }, y: { name: string; a: Agg }, s
   return (sortValue(x.a, sort.key) - sortValue(y.a, sort.key)) * m;
 }
 
-function HeadDrill({ head, headSame, cat, seg, cmp, onCmp, onBack }: {
+function HeadDrill({ head, headSame, cat, seg, cmp, onCmp, onBack, personAll, personSame, headlessAll, headlessSame }: {
   head: HeadRow; headSame: HeadRow | undefined; cat: Cat3Row[]; seg: SegmentKey; cmp: Cmp; onCmp: (c: Cmp) => void; onBack: () => void;
+  /** Footfall of each person under the head, for all stores and for same stores (exact per person). */
+  personAll: CrpFf[]; personSame: CrpFf[];
+  /** Categories with rows that have no CRP or no head, for all stores and for same stores. */
+  headlessAll: Set<string>; headlessSame: Set<string>;
 }) {
   const s = CMP_LABEL[cmp].short;
   // the segment's own name and its same-store version, for the subtitle and the starting level
@@ -788,17 +815,42 @@ function HeadDrill({ head, headSame, cat, seg, cmp, onCmp, onBack }: {
     [levelRows, crp]
   );
   const filtered = levelRows.filter((r) => (!crp || r.crp === crp) && (!catName || r.cat3 === catName));
+  // footfall (distinct bills): exact for a person, for a category under one person, and for the head total. A category
+  // sold by several persons, or a category with rows that have no CRP, is left blank, as on Day wise sales.
+  const headless = level === "all" ? headlessAll : headlessSame;
+  const ffAt = (r: Cat3Row): [number | null, number | null] => (level === "all"
+    ? [r.ff ?? null, r.ffLy ?? null] : [r.sameFf ?? null, r.sameFfLy ?? null]);
+  const sumPair = (pairs: [number | null, number | null][]): [number | null, number | null] => [
+    sumNull(pairs.map((p) => p[0])), sumNull(pairs.map((p) => p[1])),
+  ];
+  const personFfOf = (name: string): [number | null, number | null] => {
+    const p = (level === "all" ? personAll : personSame).find((x) => x.crp === name);
+    return p ? [sumNull(p.ff), sumNull(p.splyFf)] : [null, null];
+  };
+  // a person: their own footfall, or with a category chosen, the footfall of that category's row
+  const groupFfOf = (name: string, rs: Cat3Row[]): [number | null, number | null] => (catName ? sumPair(rs.map(ffAt)) : personFfOf(name));
+  // the total: the chosen person's footfall, or the head's own footfall when no person is chosen
+  const totalFfOf = (): [number | null, number | null] => {
+    if (crp) return catName ? sumPair(filtered.map(ffAt)) : personFfOf(crp);
+    if (catName) {
+      const people = new Set(filtered.map((r) => r.crp));
+      return people.size === 1 && !headless.has(catName) ? sumPair(filtered.map(ffAt)) : [null, null];
+    }
+    return level === "all" ? [head.ff ?? null, head.ffLast ?? null] : [headSame?.ff ?? null, headSame?.ffLast ?? null];
+  };
   const groups = persons
     .filter((p) => !crp || p === crp)
     .map((p) => {
-      const rs = filtered.filter((r) => r.crp === p).map((r) => ({ name: r.cat3, a: aggregate([r], level), r }));
-      return { name: p, rs, a: aggregate(filtered.filter((r) => r.crp === p), level) };
+      const own = filtered.filter((r) => r.crp === p);
+      const rs = own.map((r) => ({ name: r.cat3, a: aggregate([r], level), r, ff: ffAt(r) }));
+      return { name: p, rs, a: aggregate(own, level), ff: groupFfOf(p, own) };
     })
     .filter((g) => g.rs.length > 0)
     .sort((x, y) => sortCompare({ name: x.name, a: x.a }, { name: y.name, a: y.a }, sort))
     .map((g) => ({ ...g, rs: [...g.rs].sort((x, y) => sortCompare(x, y, sort)) }));
 
   const total = aggregate(filtered, level);
+  const totalFf = totalFfOf();
   const all = aggregate(levelRows, level);
   const reference = level === "all" ? head.sales ?? 0 : headSame?.sales ?? null;
   const gap = reference == null ? 0 : all.s - reference;
@@ -907,6 +959,8 @@ function HeadDrill({ head, headSame, cat, seg, cmp, onCmp, onBack }: {
               <Th k="gp" label="GP%" />
               <Th k="gpvoi" label="GPV+OI" />
               <Th k="goi" label="GP+OI%" />
+              <th scope="col">Footfall</th>
+              <th scope="col">Basket</th>
             </tr>
           </thead>
           <tbody>
@@ -926,12 +980,12 @@ function HeadDrill({ head, headSame, cat, seg, cmp, onCmp, onBack }: {
                       </button>
                       <b>{g.name}</b><div className="sub">{g.rs.length} categor{g.rs.length === 1 ? "y" : "ies"}</div>
                     </td>
-                    <MetricCells a={g.a} />
+                    <MetricCells a={g.a} ff={g.ff} />
                   </tr>
                   {isOpen && g.rs.map((x, i) => (
                     <tr key={g.name + i}>
                       <td className="l"><div>{nm(x.r.cat3)}</div>{x.r.cat1 && <div className="sub">{nm(x.r.cat1)}</div>}</td>
-                      <MetricCells a={x.a} />
+                      <MetricCells a={x.a} ff={x.ff} />
                     </tr>
                   ))}
                 </Fragment>
@@ -942,7 +996,7 @@ function HeadDrill({ head, headSame, cat, seg, cmp, onCmp, onBack }: {
             <tfoot>
               <tr>
                 <td className="l">Total ({groups.length} persons, {filtered.length} categories)</td>
-                <MetricCells a={total} />
+                <MetricCells a={total} ff={totalFf} />
               </tr>
             </tfoot>
           )}
