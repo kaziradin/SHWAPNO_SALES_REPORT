@@ -242,6 +242,21 @@ export default function Daily({ daily }: { daily: DailyData }) {
   const changeOf = (m: Metric, n: number | null, p: number | null) => (m.kind === "ratio" ? diffChg(n, p) : growthChg(n, p));
 
   // the same layout as the table: a column per chosen day, a Total column when there is more than one day
+  // the filters are at their defaults: all stores, own and franchise, all divisions and heads, the latest period, vs SPLY
+  const isDefault = store === "all" && type === "all" && !division && head === TOTAL && !crp && !cat && isLatest && cmp === "sply" && !focus;
+  const resetAll = () => {
+    setStore("all");
+    setType("all");
+    setDivision("");
+    setHead(TOTAL);
+    setCrp("");
+    setCat("");
+    setFrom(firstDate);
+    setTo(lastDate);
+    setFocus("");
+    setOpenHead("");
+    setCmp("sply");
+  };
   const exportDays = () => {
     const cols: ExportCol[] = [
       { header: "Measure", format: "text" }, { header: "Row", format: "text" },
@@ -319,6 +334,8 @@ export default function Daily({ daily }: { daily: DailyData }) {
             {catOptions.map((c) => <option key={c} value={c}>{c === "0" ? "(not set)" : titleCase(c)}</option>)}
           </select>
         </label>
+        <button type="button" className="linkish" onClick={resetAll} disabled={isDefault}
+          style={{ alignSelf: "flex-end", paddingBottom: 8, whiteSpace: "nowrap" }}>Reset all filters</button>
       </div>
 
       <section className="ov-kpis five day-kpis" aria-label="Day wise sales key figures">
