@@ -15,7 +15,7 @@ export type WideMeasure = {
   kind: "money" | "count" | "pct";
   growth: boolean;
   sortKey?: "name" | "sales" | "gpv" | "gp" | "gpvoi" | "goi" | "ff" | "bs";
-  /** Footfall and basket: hidden when a CRP or category is chosen, as on Day wise sales. */
+  /** Footfall and basket: left out of the Category heads tab's detail-only segments, which have no footfall. */
   needsFootfall?: boolean;
   now: (r: Partial<HeadRow>) => number | null | undefined;
   last: (r: Partial<HeadRow>) => number | null | undefined;

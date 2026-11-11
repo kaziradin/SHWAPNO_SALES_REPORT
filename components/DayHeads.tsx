@@ -2,7 +2,7 @@
 
 import { Fragment, useState } from "react";
 import type { HeadRow } from "@/lib/types";
-import { abbrOf, crOrDash, pct, roleName, signedPct, titleCase } from "@/lib/format";
+import { abbrOf, crOrDash, full, pct, roleName, signedPct, titleCase } from "@/lib/format";
 import type { Figures, Ratios } from "@/lib/daily";
 import { WIDE, WideCells } from "./HeadMeasures";
 
@@ -26,16 +26,15 @@ const asHeadRow = (f: Figures, x: Ratios): Partial<HeadRow> => ({
 
 /** The Category heads table, for the Day wise sales tab: one row per head, the same measures and columns. The head name
  *  opens its drill-down (responsible persons, then their categories). */
-export default function DayHeads({ rows, total, totalLabel, showFootfall, cmpShort, caption, onOpen }: {
+export default function DayHeads({ rows, total, totalLabel, cmpShort, caption, onOpen }: {
   rows: DayHeadRow[]; total: { f: Figures; x: Ratios }; totalLabel: string;
-  /** Footfall and basket are hidden when a CRP or category is chosen, as on the rest of the tab. */
-  showFootfall: boolean;
   cmpShort: string;
   caption: string;
   /** Opens a head's drill-down; the key is the division and head. */
   onOpen: (key: string) => void;
 }) {
-  const shown = showFootfall ? WIDE : WIDE.filter((m) => !m.needsFootfall);
+  // footfall and basket show a dash where they cannot be counted exactly for the selection
+  const shown = WIDE;
   return (
     <div className="ov-panel ov-table-panel">
       <div className="ov-table-scroll">
@@ -98,7 +97,7 @@ function PointChange({ now, last }: { now: number | null; last: number | null })
   return <span className={`delta ${t}`}>{t === "up" ? "▲ " : t === "down" ? "▼ " : ""}{signedPct(d, 2)}</span>;
 }
 
-/** The five figures of a row: sales, GPV, GP%, GPV+OI and GP+OI%, each with its change. */
+/** The seven figures of a row: sales, GPV, GP%, GPV+OI, GP+OI%, footfall and basket, each with its change. */
 function MetricCells({ f, x }: { f: Figures; x: Ratios }) {
   return (
     <>
@@ -107,6 +106,8 @@ function MetricCells({ f, x }: { f: Figures; x: Ratios }) {
       <td><div>{pct(x.gp, 2)}</div><div><PointChange now={x.gp} last={x.splyGp} /></div></td>
       <td><div>{crOrDash(f.gpvOi)}</div><div><Growth now={f.gpvOi} last={f.splyGpvOi} /></div></td>
       <td><div>{pct(x.goi, 2)}</div><div><PointChange now={x.goi} last={x.splyGoi} /></div></td>
+      <td><div>{full(f.ff)}</div><div><Growth now={f.ff} last={f.splyFf} /></div></td>
+      <td><div>{full(x.bs)}</div><div><Growth now={x.bs} last={x.splyBs} /></div></td>
     </>
   );
 }
@@ -144,6 +145,8 @@ export function DayHeadDrill({ head, cmpShort, scopeText, onBack }: {
               <th scope="col">GP%</th>
               <th scope="col">GPV+OI</th>
               <th scope="col">GP+OI%</th>
+              <th scope="col">Footfall</th>
+              <th scope="col">Basket</th>
             </tr>
           </thead>
           <tbody>

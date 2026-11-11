@@ -19,7 +19,9 @@ Sources
 
 Figures
 - GPV = sales x GP%. Value adj is added for GP+OI: GPV+OI = GPV + value adj.
-- Footfall is not in the detail rows: a bill can span several categories, so it does not add up.
+- Footfall (distinct bills) is exact at four levels: the category row of one person (detail rows), each person under
+  a head ("2 Day x Div x Head x CRP"), each division ("4 Day x Division"), and the head and total sheets. A bill can
+  span categories, persons and divisions, so the figures are not added up across rows.
 
 Usage:  python scripts/extract_daily.py [path-to-report-xlsx]
 """
@@ -224,6 +226,56 @@ def read_leaves(ws):
     return out, skipped
 
 
+CRP_SHEET = "2 Day x Div x Head x CRP"
+DIV_SHEET = "4 Day x Division"
+
+
+def read_division_ff(ws):
+    """(day, division) -> {(group, 'ff', period): value} from the day x division sheet. Footfall is counted per
+    division, so each division's figure is exact (the divisions do not add up to the total: a bill can span divisions)."""
+    cols = columns(ws)
+    out = {}
+    for row in ws.iter_rows(min_row=6, values_only=True):
+        div = text(row[3])
+        if not isinstance(row[0], dt.datetime) or div is None:
+            continue
+        out[(row[0].date(), div)] = {k: number(row[i]) for k, i in cols.items() if k[1] == "ff"}
+    return out
+
+
+def read_crp_ff(ws):
+    """(day, division, head, crp) -> {(group, 'ff', period): value}: the distinct bills of one person under one head,
+    per day. A bill is counted once for the person even when it has several categories, so it is exact per person."""
+    cols = columns(ws)
+    out = {}
+    for row in ws.iter_rows(min_row=6, values_only=True):
+        if not isinstance(row[0], dt.datetime):
+            continue
+        div, head, crp = text(row[3]), text(row[4]), text(row[5])
+        if not (div and head and crp):
+            continue
+        key = (row[0].date(), div, head_of(div, head), crp)
+        out[key] = {k: number(row[i]) for k, i in cols.items() if k[1] == "ff"}
+    return out
+
+
+def ff_by_group(lookup, keys, days, cmp, names):
+    """Per store group: for each key (e.g. a division, or a division, head and CRP) the footfall of each day, and of
+    the same day under the comparison. lookup[(day, *key)] holds {(group, 'ff', period): value}. Only rows that have
+    a figure are kept; `names` labels the key fields."""
+    out = {}
+    for g in GROUPS:
+        tp = this_period(g, cmp)
+        rows_g = []
+        for key in keys:
+            ff = [lookup.get((d, *key), {}).get((g, "ff", tp)) for d in days]
+            sply_ff = [lookup.get((d, *key), {}).get((g, "ff", cmp)) for d in days]
+            if any(v is not None for v in ff + sply_ff):
+                rows_g.append({**dict(zip(names, key)), "ff": ff, "splyFf": sply_ff})
+        out[g] = rows_g
+    return out
+
+
 def read_value_adj(path, layout):
     """Rows of the Summary Category sheet: (day, division, category, head, crp, {part: value})."""
     wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
@@ -384,6 +436,8 @@ def main():
     totals = read_totals(wb[DAY_SHEET])
     heads, head_order = read_heads(wb[HEAD_SHEET])
     leaves, skipped = read_leaves(wb[DETAIL_SHEET])
+    crp_ff = read_crp_ff(wb[CRP_SHEET])
+    div_ff = read_division_ff(wb[DIV_SHEET])
     wb.close()
     if skipped:
         print(f"Rows with no division (not used): sales {skipped:,.0f}")
@@ -428,12 +482,18 @@ def main():
     OUT.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"As of {out['asOf']} | {out['periodLabel']} | {len(days)} days | saved {OUT}")
 
+    crp_keys = list(dict.fromkeys((k[1], k[2], k[3]) for k in crp_ff))
+    div_keys = list(dict.fromkeys((k[1],) for k in div_ff))
     detail = {
         "generatedAt": out["generatedAt"],
         "sourceFile": report.name,
         "asOf": out["asOf"],
         "groups": results["sply"][1],
         "splmGroups": results["splm"][1],
+        "crpFfGroups": ff_by_group(crp_ff, crp_keys, days, "sply", ("division", "head", "crp")),
+        "splmCrpFfGroups": ff_by_group(crp_ff, crp_keys, days, "splm", ("division", "head", "crp")),
+        "divFfGroups": ff_by_group(div_ff, div_keys, days, "sply", ("division",)),
+        "splmDivFfGroups": ff_by_group(div_ff, div_keys, days, "splm", ("division",)),
     }
     DETAIL_OUT.write_text(json.dumps(detail, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     print(f"saved {DETAIL_OUT} ({DETAIL_OUT.stat().st_size / 1e6:.2f} MB)")

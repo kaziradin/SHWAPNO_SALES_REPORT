@@ -1,17 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import type { DailyHead, DayFields, DetailRow } from "@/lib/types";
+import type { CrpFf, DailyHead, DayFields, DetailRow } from "@/lib/types";
 import { abbrOf, crOrDash, full, pct, titleCase } from "@/lib/format";
 import { dayMonth, dayWeekday, isFriSat } from "@/lib/daily";
 
 type Measure = "sales" | "gpv" | "gp" | "bs" | "ff";
-const MEASURES: { k: Measure; l: string; perBill: boolean }[] = [
-  { k: "sales", l: "Sales", perBill: false },
-  { k: "gpv", l: "GPV", perBill: false },
-  { k: "gp", l: "GP%", perBill: false },
-  { k: "bs", l: "Basket", perBill: true },
-  { k: "ff", l: "Footfall", perBill: true },
+const MEASURES: { k: Measure; l: string }[] = [
+  { k: "sales", l: "Sales" },
+  { k: "gpv", l: "GPV" },
+  { k: "gp", l: "GP%" },
+  { k: "bs", l: "Basket" },
+  { k: "ff", l: "Footfall" },
 ];
 
 /** One row of the table: sales and GPV for each day (in taka), and footfall where it can be counted (null where not). */
@@ -53,9 +53,10 @@ function totalAt(l: Line, m: Measure): number | null {
 const shown = (v: number | null, m: Measure) =>
   v == null ? "–" : m === "sales" || m === "gpv" ? crOrDash(v) : m === "gp" ? pct(v, 2) : full(v);
 
-/** The day-by-day table of the heads: a measure selector, one column per day, and a drill from head to person to category. */
-export default function DayByHead({ heads, totalF, detailRows, days, cmpShort, scope }: {
-  heads: DailyHead[]; totalF: DayFields; detailRows: DetailRow[]; days: { date: string }[]; cmpShort: string; scope: string;
+/** The day-by-day table of the heads: a measure selector, one column per day, and a drill from head to person to category.
+ *  Footfall is counted for a head, a person under it (crpFf) and a category of that person; a blank means not counted. */
+export default function DayByHead({ heads, totalF, detailRows, crpFf, days, cmpShort, scope }: {
+  heads: DailyHead[]; totalF: DayFields; detailRows: DetailRow[]; crpFf: CrpFf[]; days: { date: string }[]; cmpShort: string; scope: string;
 }) {
   const n = days.length;
   const [headKey, setHeadKey] = useState<string | null>(null);
@@ -67,6 +68,10 @@ export default function DayByHead({ heads, totalF, detailRows, days, cmpShort, s
   const rowsOfHead = headOf
     ? detailRows.filter((r) => r.division === headOf.division && r.head === headOf.head && r.crp != null && r.category != null)
     : [];
+  // the footfall of a person under the open head
+  const ffOfCrp = (crp: string | null): CrpFf | null => (headOf && crp
+    ? crpFf.find((p) => p.division === headOf.division && p.head === headOf.head && p.crp === crp) ?? null
+    : null);
 
   let lines: Line[];
   let total: Line;
@@ -77,7 +82,7 @@ export default function DayByHead({ heads, totalF, detailRows, days, cmpShort, s
     const byCrp = new Map<string, DetailRow[]>();
     for (const r of rowsOfHead) byCrp.set(r.crp as string, [...(byCrp.get(r.crp as string) ?? []), r]);
     lines = [...byCrp.entries()]
-      .map(([crp, rs]) => ({ name: crp, s: addDays(rs.map((r) => r.sales), n), g: addDays(rs.map((r) => r.gpv), n), f: null, drill: true, key: crp }))
+      .map(([crp, rs]) => ({ name: crp, s: addDays(rs.map((r) => r.sales), n), g: addDays(rs.map((r) => r.gpv), n), f: ffOfCrp(crp)?.ff ?? null, drill: true, key: crp }))
       .sort((a, b) => sumOf(b.s) - sumOf(a.s));
     total = { name: "Total", s: headOf.sales, g: headOf.gpv, f: headOf.ff, drill: false, key: "" };
   } else {
@@ -85,11 +90,10 @@ export default function DayByHead({ heads, totalF, detailRows, days, cmpShort, s
     lines = rs
       .map((r) => ({ name: titleCase(r.category as string), s: r.sales, g: r.gpv, f: r.ff, drill: false, key: r.category as string }))
       .sort((a, b) => sumOf(b.s) - sumOf(a.s));
-    total = { name: "Total", s: addDays(rs.map((r) => r.sales), n), g: addDays(rs.map((r) => r.gpv), n), f: null, drill: false, key: "" };
+    total = { name: "Total", s: addDays(rs.map((r) => r.sales), n), g: addDays(rs.map((r) => r.gpv), n), f: ffOfCrp(crpName)?.ff ?? null, drill: false, key: "" };
   }
 
-  const personLevel = level === 1;
-  const activeMeasure: Measure = personLevel && MEASURES.find((x) => x.k === measure)?.perBill ? "sales" : measure;
+  const activeMeasure = measure;
   const firstCol = level === 0 ? "Head" : level === 1 ? "CRP" : "Category (Cat 3)";
 
   return (
@@ -106,13 +110,9 @@ export default function DayByHead({ heads, totalF, detailRows, days, cmpShort, s
         {crpName && <span style={{ fontWeight: 500 }}>{crpName}</span>}
       </nav>
       <div className="seg" role="group" aria-label="Measure" style={{ marginBottom: 12 }}>
-        {MEASURES.map((x) => {
-          const off = personLevel && x.perBill;
-          return (
-            <button key={x.k} type="button" aria-pressed={activeMeasure === x.k} disabled={off} title={off ? "Not counted per person" : undefined}
-              onClick={() => setMeasure(x.k)}>{x.l}</button>
-          );
-        })}
+        {MEASURES.map((x) => (
+          <button key={x.k} type="button" aria-pressed={activeMeasure === x.k} onClick={() => setMeasure(x.k)}>{x.l}</button>
+        ))}
       </div>
       <div className="ov-panel ov-table-panel">
         <div className="ov-table-scroll">

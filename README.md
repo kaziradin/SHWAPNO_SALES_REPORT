@@ -24,7 +24,7 @@ The Overview, Category heads and Outlets tabs can be compared with **SPLY** (sam
 - `data/months/index.json`: the list of months, used by the Overview's month selector.
 - `data/report.json`: a copy of the latest month, used by the other tabs.
 - `data/daily.json`: each day of the month and the same day last year (sales, GPV, value adj, footfall), for all stores and same stores, each also for own and franchise stores, per category head and in total. Overwritten each run.
-- `data/daily-detail.json`: the detail rows (division, head, CRP, category level 3) with each day's sales, GPV and value adj, for all stores and same stores. Loaded only when the Day wise sales tab is opened. Footfall is left out because it does not add up across categories. Rows with no division in the day-wise report are left out; their sales are small and the page shows any gap to the total as its own line.
+- `data/daily-detail.json`: the detail rows (division, head, CRP, category level 3) with each day's sales, GPV and value adj, for all stores and same stores. Loaded only when the Day wise sales tab is opened. Rows with no division in the day-wise report are left out; their sales are small and the page shows any gap to the total as its own line. Footfall is on the category rows only, because a bill can hold several categories and the rows do not add up. The same file holds footfall that is exact at the other levels: `crpFfGroups` (each person under each head, from the "2 Day x Div x Head x CRP" sheet) and `divFfGroups` (each division, from "4 Day x Division"). The divisions and the persons under a head do not add up either, so each is shown on its own row.
 
 The day-wise report gives sales, GP% and footfall, with no value adj. `extract_daily.py` works out:
 

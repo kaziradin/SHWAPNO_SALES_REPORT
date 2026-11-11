@@ -77,13 +77,21 @@ export type DayFields = {
 export type DailyHead = DayFields & { division: string; role: string; head: string };
 
 /** One row of the day-wise detail. The rows add up to the total without subtotals: a division row
- *  (no category), a category row (no head), or a CRP row under a head. Footfall is left out. */
+ *  (no category), a category row (no head), or a CRP row under a head. Footfall is on category rows only, and is
+ *  exact there for that person; it is not added up across rows. */
 export type DetailRow = Pick<DayFields, "sales" | "splySales" | "gpv" | "splyGpv" | "valueAdj" | "splyValueAdj" | "ff" | "splyFf"> & {
   division: string; category: string | null; head: string | null; crp: string | null;
 };
 
 /** A data group on the Day wise sales tab: all stores, same stores, and their own and franchise stores. */
 export type StoreKey = "all" | "same" | "allOwn" | "allFran" | "sameOwn" | "sameFran";
+
+/** Footfall (distinct bills) of one person under one head, per day. Exact for that person; bills are counted once
+ *  per person, so a person under two heads is not added up across heads. */
+export type CrpFf = { division: string; head: string; crp: string; ff: (number | null)[]; splyFf: (number | null)[] };
+
+/** Footfall (distinct bills) of one division, per day. The divisions do not add up: a bill can span divisions. */
+export type DivFf = { division: string; ff: (number | null)[]; splyFf: (number | null)[] };
 
 export type DailyDetailData = {
   generatedAt: string;
@@ -93,6 +101,14 @@ export type DailyDetailData = {
   groups: Record<StoreKey, DetailRow[]>;
   /** The same rows against the same day last month: the splySales and splyValueAdj fields are last month's. */
   splmGroups: Record<StoreKey, DetailRow[]>;
+  /** Footfall of each person under each head: ff is this month, splyFf is the same day last year. */
+  crpFfGroups: Record<StoreKey, CrpFf[]>;
+  /** The same against the same day last month: splyFf is last month's. */
+  splmCrpFfGroups: Record<StoreKey, CrpFf[]>;
+  /** Footfall of each division: ff is this month, splyFf is the same day last year. */
+  divFfGroups: Record<StoreKey, DivFf[]>;
+  /** The same against the same day last month: splyFf is last month's. */
+  splmDivFfGroups: Record<StoreKey, DivFf[]>;
 };
 
 export type DailyData = {
