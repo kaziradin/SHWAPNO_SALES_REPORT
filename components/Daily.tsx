@@ -135,7 +135,15 @@ export default function Daily({ daily }: { daily: DailyData }) {
         && r.crp === sel.crp && r.category === sel.cat);
       return cats.length === 1 ? cats[0] : null;
     }
-    if (sel.cat) return null;
+    if (sel.cat) {
+      // a category with no CRP chosen: exact when one CRP sells it in the scope chosen, because every bill with that
+      // category is then that CRP's. When two or more CRPs sell it, a bill could be counted once for each of them: a dash.
+      const sellers = listedRows(detailRows(group)).filter((r) => r.category === sel.cat && r.crp != null && r.head != null
+        && (!sel.division || r.division === sel.division)
+        && (!sel.head || (r.division === sel.head.division && r.head === sel.head.head)));
+      const people = new Set(sellers.map((r) => `${r.division}|${r.head}|${r.crp}`));
+      return people.size === 1 ? sellers[0] : null;
+    }
     if (sel.head) return sel.head;
     if (sel.division) return divisionFf(group).find((d) => d.division === sel.division) ?? null;
     return g.total;
