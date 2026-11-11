@@ -138,7 +138,10 @@ export default function Daily({ daily }: { daily: DailyData }) {
     if (sel.cat) {
       // a category with no CRP chosen: exact when one CRP sells it in the scope chosen, because every bill with that
       // category is then that CRP's. When two or more CRPs sell it, a bill could be counted once for each of them: a dash.
+      // A row counts as a seller only if it has bills this period or last year: a row with only value adj (such as
+      // 'Unmapped') has no bills and does not change the count.
       const sellers = listedRows(detailRows(group)).filter((r) => r.category === sel.cat && r.crp != null && r.head != null
+        && (r.ff.some((v) => v) || r.splyFf.some((v) => v))
         && (!sel.division || r.division === sel.division)
         && (!sel.head || (r.division === sel.head.division && r.head === sel.head.head)));
       const people = new Set(sellers.map((r) => `${r.division}|${r.head}|${r.crp}`));
