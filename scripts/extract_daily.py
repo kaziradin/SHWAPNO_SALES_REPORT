@@ -98,10 +98,12 @@ PREV_VA_LAYOUT = {
         "sameOwn": ("SPLY SAME OWN",),
         "sameFran": ("SPLY SAME FRAN",),
     },
+    # The SPLM workbook now has the same columns as the SPLY one: Total OWN, Total FRAN and Grand Total (their sum is
+    # the grand total exactly); the same-store columns are kept as they were.
     "splm": {
-        "all": ("SPLM Total",),
-        "allOwn": ("SPLM SAME OWN", "SPLM NEW OWN"),
-        "allFran": ("SPLM SAME FRAN", "SPLM NEW FRAN"),
+        "all": ("Grand Total",),
+        "allOwn": ("Total OWN",),
+        "allFran": ("Total FRAN",),
         "sameOwn": ("SPLM SAME OWN",),
         "sameFran": ("SPLM SAME FRAN",),
     },
