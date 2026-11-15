@@ -449,14 +449,47 @@ function Heads({ report, cmp, daily, onCmp }: { report: Report; cmp: Cmp; daily:
     return [...acc.values()].map((g): HeadRow => {
       const role = baseHeads.find((h) => headKeyOf(h) === `${g.division}|${g.head}`)?.role ?? "";
       const gpvOi = g.gpv + g.va, gpvOiLast = g.gpvLast + g.vaLast;
+      const hRows = rs.filter((r) => headKeyOf(r) === `${g.division}|${g.head}`);
+      const [ff, ffl] = headFfOf(g.division, g.head, hRows);
       return {
         division: g.division, role, head: g.head,
-        sales: g.sales, salesLast: g.salesLast, ff: null, ffLast: null, bs: null, bsLast: null,
+        sales: g.sales, salesLast: g.salesLast, ff, ffLast: ffl,
+        bs: ff ? g.sales / ff : null, bsLast: ffl ? g.salesLast / ffl : null,
         gp: ratioOf(g.gpv, g.sales), gpLast: ratioOf(g.gpvLast, g.salesLast),
         gpv: g.gpv, gpvLast: g.gpvLast, gpOi: ratioOf(gpvOi, g.sales), gpOiLast: ratioOf(gpvOiLast, g.salesLast),
         gpvOi, gpvOiLast,
       };
     });
+  };
+  // footfall (distinct bills) of the chosen CRP or category, by the rule on Day wise sales: a person's own footfall is exact;
+  // a category counts from its one seller when the bills with no CRP are at most HEADLESS_LIMIT of its bills; otherwise blank
+  const groupRows: DetailRow[] = canDetail ? ((cmp === "sply" ? detail?.groups : detail?.splmGroups)?.[STORE_OF[seg] as StoreKey] ?? []) : [];
+  const ffPersons: CrpFf[] = canDetail ? ((cmp === "sply" ? detail?.crpFfGroups : detail?.splmCrpFfGroups)?.[STORE_OF[seg] as StoreKey] ?? []) : [];
+  const pairOf = (rs: DetailRow[]): [number, number] => rs.reduce<[number, number]>((t, r) => [t[0] + sumArr(r.ff), t[1] + sumArr(r.splyFf)], [0, 0]);
+  const headlessOf = (division: string, category: string): [number, number] => pairOf(groupRows.filter((r) =>
+    r.division === division && r.category === category && (r.crp == null || r.head == null)));
+  const headFfOf = (division: string, head: string, rs: DetailRow[]): [number | null, number | null] => {
+    if (crpSel && !catSel) {
+      const p = ffPersons.find((x) => x.crp === crpSel && x.division === division && x.head === head);
+      return p ? [sumNull(p.ff), sumNull(p.splyFf)] : [null, null];
+    }
+    if (crpSel) return rs.length ? pairOf(rs) : [null, null];
+    const sellers = new Set(rs.map((r) => r.crp));
+    if (sellers.size !== 1 || !catSel) return [null, null];
+    const seller = pairOf(rs);
+    return headlessWithin(seller, headlessOf(division, catSel)) ? seller : [null, null];
+  };
+  const totalFfOf = (): [number | null, number | null] => {
+    const rs = rowsFor(headSelKey, crpSel, catSel);
+    if (crpSel && !catSel) {
+      const ps = ffPersons.filter((x) => x.crp === crpSel && (!headSelKey || headKeyOf(x) === headSelKey));
+      return ps.length === 1 ? [sumNull(ps[0].ff), sumNull(ps[0].splyFf)] : [null, null];
+    }
+    if (crpSel) return rs.length && new Set(rs.map((r) => headKeyOf(r))).size === 1 ? pairOf(rs) : [null, null];
+    const sellers = new Set(rs.map((r) => `${r.division}|${r.head}|${r.crp}`));
+    if (sellers.size !== 1 || !catSel || rs.length === 0) return [null, null];
+    const seller = pairOf(rs);
+    return headlessWithin(seller, headlessOf(rs[0].division, catSel)) ? seller : [null, null];
   };
   const rows = fromDetail
     ? sortHeads(headRowsFromDetail(rowsFor(headSelKey, crpSel, catSel)), hsort)
@@ -474,7 +507,9 @@ function Heads({ report, cmp, daily, onCmp }: { report: Report; cmp: Cmp; daily:
   const G = dayTotal ? dsum(dayTotal.gpv) : sum((r) => r.gpv), GL = dayTotal ? dsum(dayTotal.splyGpv) : sum((r) => r.gpvLast);
   const GO = dayTotal ? G + dsum(dayTotal.valueAdj) : sum((r) => r.gpvOi);
   const GOL = dayTotal ? GL + dsum(dayTotal.splyValueAdj) : sum((r) => r.gpvOiLast);
-  const FF = dayTotal ? dsum(dayTotal.ff) : sum((r) => r.ff), FFL = dayTotal ? dsum(dayTotal.splyFf) : sum((r) => r.ffLast);
+  const [FF, FFL]: [number | null, number | null] = dayTotal
+    ? [dsum(dayTotal.ff), dsum(dayTotal.splyFf)]
+    : fromDetail ? totalFfOf() : [sum((r) => r.ff), sum((r) => r.ffLast)];
   const companyTotal = dayTotal ? S : report[cmp].segments[seg]?.total?.sales ?? null;
   const gp = ratioOf(G, S), gpL = ratioOf(GL, L), goi = ratioOf(GO, S), goiL = ratioOf(GOL, L);
   const grS = L ? S / L - 1 : null, grG = GL ? G / GL - 1 : null, grGO = GOL ? GO / GOL - 1 : null;
@@ -501,7 +536,7 @@ function Heads({ report, cmp, daily, onCmp }: { report: Report; cmp: Cmp; daily:
 
   // the totals row: the day-wise totals for all stores and same stores, otherwise the sum of the heads
   const wideTotals: Partial<HeadRow> = {
-    sales: S, salesLast: L, ff: FF, ffLast: FFL, bs: S / (FF || 1), bsLast: L / (FFL || 1),
+    sales: S, salesLast: L, ff: FF, ffLast: FFL, bs: FF ? S / FF : null, bsLast: FFL ? L / FFL : null,
     gp, gpLast: gpL, gpv: G, gpvLast: GL, gpOi: goi, gpOiLast: goiL, gpvOi: GO, gpvOiLast: GOL,
   };
   const exportHeads = () => {
