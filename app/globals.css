@@ -456,6 +456,16 @@ td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .day-filters input[type="date"] { min-width: 150px; padding: 6px 8px; border: 1px solid #D8E0EA; border-radius: 8px; font: inherit; color: inherit; background: #fff; }
 .day-filters .day-head select { max-width: 320px; }
 
+/* Day wise sales: the filters in a left panel, one under another, with the KPIs, charts and tables to the right */
+.day-page { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 16px; align-items: start; }
+.day-page .day-filters-panel { position: sticky; top: 12px; display: flex; flex-direction: column; align-items: stretch; gap: 12px; margin: 0; padding: 14px; background: #fff; border: 1px solid var(--ov-border); border-radius: 12px; }
+.day-page .day-filters-panel label { font-size: 12px; font-weight: 600; color: var(--ov-ink2); }
+.day-page .day-filters-panel select, .day-page .day-filters-panel input[type="date"] { width: 100%; min-width: 0; max-width: none; box-sizing: border-box; }
+.day-page .day-filters-panel .seg { width: 100%; }
+.day-page .day-filters-panel .seg button { flex: 1; }
+.day-main { min-width: 0; }
+@media (max-width: 900px) { .day-page { grid-template-columns: minmax(0, 1fr); } .day-page .day-filters-panel { position: static; } }
+
 /* Day wise sales: sales full width, then the ratios in pairs (GPV beside GPV+OI, GP% beside GP+OI%) */
 .day-charts { display: grid; gap: 16px; margin-bottom: 20px; }
 .day-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }

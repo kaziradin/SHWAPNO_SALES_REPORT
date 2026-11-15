@@ -349,8 +349,8 @@ export default function Daily({ daily }: { daily: DailyData }) {
   };
 
   return (
-    <div className="ov">
-      <div className="drill-filters day-filters">
+    <div className="ov day-page">
+      <aside className="drill-filters day-filters day-filters-panel" aria-label="Day wise sales filters">
         <div className="fbar-field">
           <span>Compare with</span>
           <div className="seg" role="group" aria-label="Comparison period">
@@ -402,9 +402,10 @@ export default function Daily({ daily }: { daily: DailyData }) {
           </select>
         </label>
         <button type="button" className="linkish" onClick={resetAll} disabled={isDefault}
-          style={{ alignSelf: "flex-end", paddingBottom: 8, whiteSpace: "nowrap" }}>Reset all filters</button>
-      </div>
+          style={{ alignSelf: "flex-start", whiteSpace: "nowrap" }}>Reset all filters</button>
+      </aside>
 
+      <div className="day-main">
       <section className="ov-kpis day-kpis" aria-label="Day wise sales key figures">
         {kpi.map((k) => (
           <div className="ov-kpi" key={k.label}>
@@ -516,6 +517,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
 
       <DailyDetail daily={daily} group={group} cmp={cmp} detail={detail} chosen={chosenIdx} label={periodName} compare={compareName}
         head={headSel} crp={crpSel} cat={catSel} />
+      </div>
     </div>
   );
 }
