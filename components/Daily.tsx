@@ -351,6 +351,8 @@ export default function Daily({ daily }: { daily: DailyData }) {
   return (
     <div className="ov day-page">
       <aside className="drill-filters day-filters day-filters-panel" aria-label="Day wise sales filters">
+        <button type="button" className="linkish" onClick={resetAll} disabled={isDefault}
+          style={{ alignSelf: "flex-start", whiteSpace: "nowrap" }}>Reset all filters</button>
         <div className="fbar-field">
           <span>Compare with</span>
           <div className="seg" role="group" aria-label="Comparison period">
@@ -401,8 +403,6 @@ export default function Daily({ daily }: { daily: DailyData }) {
             {catOptions.map((c) => <option key={c} value={c}>{c === "0" ? "(not set)" : titleCase(c)}</option>)}
           </select>
         </label>
-        <button type="button" className="linkish" onClick={resetAll} disabled={isDefault}
-          style={{ alignSelf: "flex-start", whiteSpace: "nowrap" }}>Reset all filters</button>
       </aside>
 
       <div className="day-main">
