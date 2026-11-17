@@ -196,7 +196,7 @@ export default function DayByHead({ heads, totalF, detailRows, crpFf, days, cmpS
                 <th scope="col" className="l dh-c2">Category role</th>
                 <th scope="col" className="l dh-c3">{firstCol}</th>
                 {days.map((d) => (
-                  <th key={d.date} scope="col" style={{ background: isFriSat(d.date) ? "var(--surface-1)" : undefined }}>
+                  <th key={d.date} scope="col" style={{ background: isFriSat(d.date) ? "#EEF3FA" : undefined }}>
                     {dayMonth(d.date)}
                     <div style={{ fontWeight: 400, color: "var(--ov-ink2)", fontSize: 11 }}>{dayWeekday(d.date)}</div>
                   </th>
@@ -216,7 +216,7 @@ export default function DayByHead({ heads, totalF, detailRows, crpFf, days, cmpS
                   </td>
                   {days.map((d, i) => (
                     <ValueCell key={d.date} m={activeMeasure} n={valueAt(l, activeMeasure, i)} l={lastAt(l, activeMeasure, i)}
-                      style={{ background: isFriSat(d.date) ? "var(--surface-1)" : undefined }} />
+                      style={{ background: isFriSat(d.date) ? "#EEF3FA" : undefined }} />
                   ))}
                   <ValueCell m={activeMeasure} n={totalAt(l, activeMeasure)} l={totalLastAt(l, activeMeasure)} style={{ fontWeight: 500 }} />
                 </tr>
@@ -227,7 +227,7 @@ export default function DayByHead({ heads, totalF, detailRows, crpFf, days, cmpS
                 <th scope="row" colSpan={3} className="l dh-foot">{total.name}</th>
                 {days.map((d, i) => (
                   <ValueCell key={d.date} m={activeMeasure} n={valueAt(total, activeMeasure, i)} l={lastAt(total, activeMeasure, i)}
-                    style={{ fontWeight: 500, background: isFriSat(d.date) ? "var(--surface-1)" : undefined }} />
+                    style={{ fontWeight: 500, background: isFriSat(d.date) ? "#EEF3FA" : undefined }} />
                 ))}
                 <ValueCell m={activeMeasure} n={totalAt(total, activeMeasure)} l={totalLastAt(total, activeMeasure)} style={{ fontWeight: 500 }} />
               </tr>
