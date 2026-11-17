@@ -23,6 +23,9 @@ export default function DayLines({ title, kind, points, total, band, totalLabel 
   const { ref, w } = useWidth(560);
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<number | null>(null);
+  // the comparison's short name for the charts: SPLY (same period last year) or SPLM (same period last month)
+  const short = prevWord === "last month" ? "SPLM" : "SPLY";
+  const longName = prevWord === "last month" ? "same period last month" : "same period last year";
   const H = 240, top = 14, bottom = 26, left = 66, right = 14;
   const fmt = (v: number) => (kind === "money" ? crFmt(v) : kind === "count" ? full(v) : pct(v, 2));
   const values = points.flatMap((p) => [p.now, p.prev]).filter((v): v is number => v != null);
@@ -78,7 +81,7 @@ export default function DayLines({ title, kind, points, total, band, totalLabel 
     const d = difference(p.now, p.prev);
     const rows: TipRow[] = [
       ["This day", p.now == null ? "–" : fmt(p.now)],
-      [`Same day ${prevWord}`, p.prev == null ? "–" : fmt(p.prev)],
+      [short, p.prev == null ? "–" : fmt(p.prev)],
       ["Difference", d == null ? "–" : kind === "money" ? crSigned(d) : kind === "count" ? `${d >= 0 ? "+" : "−"}${full(Math.abs(d))}` : signedPct(d, 2)],
     ];
     if (kind !== "pct") rows.push(["Change", signedPct(growth(p.now, p.prev), 2)]);
@@ -104,12 +107,12 @@ export default function DayLines({ title, kind, points, total, band, totalLabel 
       <h3>{title}</h3>
       <div className="day-sum">
         <span>
-          {totalLabel} <b>{valueText(total.now)}</b> · same days {prevWord} <b>{valueText(total.prev)}</b> ·{" "}
+          {totalLabel} <b>{valueText(total.now)}</b> · {short} <b>{valueText(total.prev)}</b> ·{" "}
           <span className={`delta ${toneOfNum(change)}`}>{signedPct(change, 2)}</span>
         </span>
         <span className="day-legend">
           <span><i className="sw sw-this" />This month</span>
-          <span><i className="sw sw-last" />Same day {prevWord}</span>
+          <span><i className="sw sw-last" />{short} ({longName})</span>
         </span>
       </div>
       <div ref={ref}>
