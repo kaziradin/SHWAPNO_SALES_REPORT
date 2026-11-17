@@ -68,19 +68,24 @@ const headLabel = (h: { division: string; role: string; head: string }) => `${ab
 const dateFull = (iso: string) =>
   `${new Date(`${iso}T00:00:00`).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })} · ${dayWeekday(iso)}`;
 
+/** The tint of each measure's columns in the day table: money in blue and green, ratios in amber, counts in grey. */
+const DAY_TINT: Record<string, string> = {
+  Sales: "tint-blue", GPV: "tint-green", "GPV+OI": "tint-green", "GP%": "tint-amber", "GP+OI%": "tint-amber", Footfall: "tint-grey", Basket: "tint-grey",
+};
+
 /** One metric's cells in a row of the day table: this period, the comparison, the difference and, for money and counts, the growth. */
-function RowMetric({ m, n, l }: { m: Metric; n: number | null; l: number | null }) {
+function RowMetric({ m, n, l, tint }: { m: Metric; n: number | null; l: number | null; tint: string }) {
   const shownValue = (v: number | null) => (v == null ? "–" : m.kind === "ratio" ? pct(v, 2) : full(v));
   const d = difference(n, l);
   const diffText = d == null ? "–" : m.kind === "ratio" ? signedPct(d, 2) : `${d >= 0 ? "+" : "−"}${full(Math.abs(d))}`;
   const g = m.kind === "ratio" ? null : growth(n, l);
   return (
     <>
-      <td>{shownValue(n)}</td>
-      <td>{shownValue(l)}</td>
-      <td><span className={`delta ${toneOfNum(d)}`}>{diffText}</span></td>
+      <td className={`${tint} grp-start`}>{shownValue(n)}</td>
+      <td className={tint}>{shownValue(l)}</td>
+      <td className={tint}><span className={`delta ${toneOfNum(d)}`}>{diffText}</span></td>
       {m.kind !== "ratio" && (
-        <td><span className={`delta ${toneOfNum(g)}`}>{g == null ? "–" : `${arrowOf(toneOfNum(g))}${signedPct(g, 2)}`}</span></td>
+        <td className={tint}><span className={`delta ${toneOfNum(g)}`}>{g == null ? "–" : `${arrowOf(toneOfNum(g))}${signedPct(g, 2)}`}</span></td>
       )}
     </>
   );
@@ -503,10 +508,10 @@ export default function Daily({ daily }: { daily: DailyData }) {
                 <th scope="col" className="l">Same day {CMP_WORD[cmp]} date</th>
                 {metrics.map((m) => (
                   <Fragment key={m.label}>
-                    <th scope="col">{m.label} this</th>
-                    <th scope="col">{m.label} {CMP_SHORT[cmp]}</th>
-                    <th scope="col">Diff</th>
-                    {m.kind !== "ratio" && <th scope="col">GR %</th>}
+                    <th scope="col" className={`${DAY_TINT[m.label]} grp-start`}>{m.label} this</th>
+                    <th scope="col" className={DAY_TINT[m.label]}>{m.label} {CMP_SHORT[cmp]}</th>
+                    <th scope="col" className={DAY_TINT[m.label]}>Diff</th>
+                    {m.kind !== "ratio" && <th scope="col" className={DAY_TINT[m.label]}>GR %</th>}
                   </Fragment>
                 ))}
               </tr>
@@ -516,7 +521,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
                 <tr key={r.date}>
                   <td className="l">{dateFull(r.date)}</td>
                   <td className="l">{dateFull(r.prev)}</td>
-                  {metrics.map((m) => <RowMetric key={m.label} m={m} n={m.now(r.f, r.x)} l={m.prev(r.f, r.x)} />)}
+                  {metrics.map((m) => <RowMetric key={m.label} m={m} n={m.now(r.f, r.x)} l={m.prev(r.f, r.x)} tint={DAY_TINT[m.label]} />)}
                 </tr>
               ))}
             </tbody>
@@ -525,7 +530,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
                 <tr>
                   <th scope="row" className="l">Total · {chosen.length} {chosen.length === 1 ? "day" : "days"}</th>
                   <td />
-                  {metrics.map((m) => <RowMetric key={m.label} m={m} n={m.now(total, totalX)} l={m.prev(total, totalX)} />)}
+                  {metrics.map((m) => <RowMetric key={m.label} m={m} n={m.now(total, totalX)} l={m.prev(total, totalX)} tint={DAY_TINT[m.label]} />)}
                 </tr>
               </tfoot>
             )}
