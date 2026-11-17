@@ -120,15 +120,19 @@ function StoreTable({ data }: { data: StoresData }) {
   const f = total.ff, fl = totalLast.ff;
   const gp = s ? g / s : null, gpl = sl ? gl / sl : null;
   const bs = f ? s / f : null, bsl = fl ? sl / fl : null;
-  // the targets of the outlets shown that have one, and the basket target (sales / footfall)
-  const withTgt = rows.flatMap((x) => (x.tgt ? [x.tgt] : []));
-  const tgtTotal = addSums(withTgt);
-  const noTarget = rows.length - withTgt.length;
-  const ts = withTgt.length ? tgtTotal.sales : null, tg = withTgt.length ? tgtTotal.gpv : null, tf = withTgt.length ? tgtTotal.ff : null;
+  // the targets of the outlets shown that have one; achievement is their sales against those targets, so both cover the same outlets
+  const tgtRows = rows.flatMap((x) => (x.tgt ? [{ now: x.now, tgt: x.tgt }] : []));
+  const tgtTotal = addSums(tgtRows.map((x) => x.tgt));
+  const achSales = addSums(tgtRows.map((x) => x.now)).sales;
+  const noTarget = rows.length - tgtRows.length;
+  const ts = tgtRows.length ? tgtTotal.sales : null, tg = tgtRows.length ? tgtTotal.gpv : null, tf = tgtRows.length ? tgtTotal.ff : null;
   const tb = ts != null && tf ? ts / tf : null;
+  const ach = ts ? achSales / ts : null;
   const short = CMP_SHORT[cmp];
   const kFmt = (v: number) => `${(v / 1000).toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}K`;
   const kpi = [
+    // the till-date achievement: the sales of the outlets with a target against their target, for the days chosen
+    { label: "Ach %", value: pct(ach, 2), sub: `Target: ${crOrDash(ts)}`, delta: ach != null ? ach - 1 : null, ratio: true },
     { label: "Sales", value: crOrDash(s), sub: `${short}: ${crOrDash(sl)}`, delta: growth(s, sl), ratio: false },
     { label: "GPV", value: crOrDash(g), sub: `${short}: ${crOrDash(gl)}`, delta: growth(g, gl), ratio: false },
     { label: "GP%", value: pct(gp, 2), sub: `${short}: ${pct(gpl, 2)}`, delta: gp != null && gpl != null ? gp - gpl : null, ratio: true },
@@ -201,7 +205,7 @@ function StoreTable({ data }: { data: StoresData }) {
       </aside>
 
       <div className="day-main">
-        <section className="ov-kpis five" aria-label="Store wise key figures">
+        <section className="ov-kpis six" aria-label="Store wise key figures">
           {kpi.map((k) => {
             const tone = toneOfNum(k.delta);
             const text = k.delta == null ? "" : k.ratio ? signedPct(k.delta, 2) : `${arrowOf(tone)}${signedPct(k.delta, 2)}`;

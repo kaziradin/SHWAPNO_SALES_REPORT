@@ -565,6 +565,15 @@ td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
   .ov-kpis.five .ov-kpi:last-child { grid-column: 1 / -1; }
 }
 
+/* Store wise performance: six KPI cards, the first being the achievement against target */
+.ov-kpis.six { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.ov-kpis.six .ov-kpi { grid-column: auto; }
+@media (max-width: 1100px) { .ov-kpis.six { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 640px) {
+  .ov-kpis.six { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ov-kpis.six .ov-kpi:last-child { grid-column: 1 / -1; }
+}
+
 /* Head drill-down: sortable column headings */
 .sortbtn { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: inherit; cursor: pointer; }
 .sortbtn:hover { color: #1f3a5f; text-decoration: underline; }
