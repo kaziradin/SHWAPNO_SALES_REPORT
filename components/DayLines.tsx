@@ -7,6 +7,9 @@ import { useTooltip, useWidth, type TipRow } from "./charts";
 
 export type DayPoint = { date: string; sply: string; now: number | null; prev: number | null };
 
+/** Thursday, Friday and Saturday: their day numbers on the axis are bold. */
+const markedDay = (iso: string) => [4, 5, 6].includes(new Date(`${iso}T00:00:00`).getDay());
+
 /** One line per series, one point per day: this month (navy) against the same day last year (grey).
  *  Money is in crore, ratios in percent, counts (footfall, basket) as whole numbers. Move the pointer anywhere over the chart
  *  to read that day's figures. */
@@ -40,7 +43,8 @@ export default function DayLines({ title, kind, points, total, band, totalLabel 
   const line = (key: "now" | "prev") =>
     points.map((p, i) => { const v = p[key]; return v == null ? null : `${x(i)},${y(v)}`; }).filter(Boolean).join(" ");
   // label every day when there is room, otherwise every second, third... day; the last day is always labelled
-  const step = Math.max(1, Math.ceil(n / Math.max(1, Math.floor(plotW / 24))));
+  // every day number is shown while the chart is wide enough for it (about 16px a day), so no Thursday, Friday or Saturday is skipped
+  const step = Math.max(1, Math.ceil(n / Math.max(1, Math.floor(plotW / 16))));
   const lastIdx = points.length - 1;
   // The value labels. The higher of a day's two values sits above its point and the lower one below. This month's values
   // are placed first (the last day first of all), then last year's; a label that would run into one already placed is
@@ -135,7 +139,8 @@ export default function DayLines({ title, kind, points, total, band, totalLabel 
               {p.prev != null && <circle cx={x(i)} cy={y(p.prev)} r={hover === i ? 4.5 : 2.5} style={{ fill: "var(--last)" }} />}
               {p.now != null && <circle cx={x(i)} cy={y(p.now)} r={hover === i ? 5 : 3} style={{ fill: "var(--this)" }} />}
               {(i % step === 0 || i === lastIdx) && (
-                <text x={x(i)} y={H - 8} textAnchor="middle" fontSize={11} className="ov-col-name">{dayNum(p.date)}</text>
+                <text x={x(i)} y={H - 8} textAnchor="middle" fontSize={11} fontWeight={markedDay(p.date) ? 500 : 400}
+                  style={{ fill: markedDay(p.date) ? "var(--text-primary)" : "var(--text-secondary)" }}>{dayNum(p.date)}</text>
               )}
             </g>
           ))}
