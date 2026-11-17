@@ -6,6 +6,7 @@ set "PATH=C:\Program Files\nodejs;C:\Program Files\Git\cmd;%PATH%"
 
 python scripts\extract.py || goto :fail
 python scripts\extract_daily.py || goto :fail
+python scripts\extract_stores.py || goto :fail
 
 git add data
 git diff --cached --quiet && (echo No changes in the data. & goto :done)
