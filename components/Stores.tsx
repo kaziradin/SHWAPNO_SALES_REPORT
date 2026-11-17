@@ -232,17 +232,17 @@ function StoreTable({ data }: { data: StoresData }) {
       </aside>
 
       <div className="day-main">
-        <section className="st-kpis" aria-label="Store wise key figures">
+        <section className="ov-kpis five" aria-label="Store wise key figures">
           {cards.map((c) => {
             const tone = toneOfNum(c.change);
             const text = c.change == null ? "–" : c.ratio ? signedPct(c.change, 2) : `${arrowOf(tone)}${signedPct(c.change, 2)}`;
             return (
-              <div className="st-kpi" key={c.label}>
-                <div className="st-kpi-label">{c.label} · {scope}</div>
-                <div className="st-kpi-value">{c.value}</div>
+              <div className="ov-kpi st-kpi" key={c.label}>
+                <div className="ov-kpi-label">{c.label} · {scope}</div>
+                <div className="ov-kpi-value">{c.value}</div>
                 <span className={`st-pill ${tone}`}>{text}</span>
-                <div className="st-kpi-line">{c.line1}</div>
-                <div className="st-kpi-line">{c.line2}</div>
+                <div className="ov-kpi-cmp">{c.line1}</div>
+                <div className="ov-kpi-cmp">{c.line2}</div>
               </div>
             );
           })}

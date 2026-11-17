@@ -565,18 +565,13 @@ td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
   .ov-kpis.five .ov-kpi:last-child { grid-column: 1 / -1; }
 }
 
-/* Store wise performance: KPI cards with the change pill, the comparison line, and the target line with ACH */
-.st-kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
-.st-kpi { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; padding: 14px 16px; background: #fff; border: 1px solid #D8E0EA; border-radius: 12px; }
-.st-kpi-label { font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #526176; }
-.st-kpi-value { font-size: 26px; font-weight: 700; line-height: 1.1; color: #0F2744; }
-.st-pill { font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; }
-.st-pill.up { background: #E7F6EE; color: #15803D; }
-.st-pill.down { background: #FDECEC; color: #B42318; }
-.st-pill.flat { background: #EEF2F7; color: #526176; }
-.st-kpi-line { font-size: 12px; color: #526176; }
-@media (max-width: 1100px) { .st-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (max-width: 640px) { .st-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* Store wise performance: KPI cards in the navy band; the change sits in a pill, in the band's up and down colours */
+.st-kpi { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 0; }
+.st-pill { font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; font-variant-numeric: tabular-nums; }
+.st-pill.up { background: rgba(95, 220, 143, 0.14); color: #5fdc8f; }
+.st-pill.down { background: rgba(255, 138, 128, 0.14); color: #ff8a80; }
+.st-pill.flat { background: rgba(255, 255, 255, 0.08); color: #9fb4cf; }
+.st-kpi .ov-kpi-cmp { font-size: 11.5px; line-height: 1.35; }
 
 /* Head drill-down: sortable column headings */
 .sortbtn { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: inherit; cursor: pointer; }
