@@ -512,6 +512,12 @@ td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .tinted .grp-start.tint-green { border-left-color: #2E9E5B; }
 .tinted .grp-start.tint-amber { border-left-color: #C98A1B; }
 .tinted .grp-start.tint-grey { border-left-color: #8A96A8; }
+
+/* Store wise performance table: the code and the outlet name stay on the left when scrolled right */
+.stores-table th.st-c1, .stores-table td.st-c1 { position: sticky; left: 0; z-index: 2; background: #fff; width: 66px; min-width: 66px; max-width: 66px; }
+.stores-table th.st-c2, .stores-table td.st-c2 { position: sticky; left: 66px; z-index: 2; background: #fff; width: 210px; min-width: 210px; max-width: 210px; white-space: normal; box-shadow: 4px 0 6px -4px rgba(15, 39, 68, 0.22); }
+.stores-table thead th.st-c1, .stores-table thead th.st-c2 { background: #F6F8FB; z-index: 4; }
+.stores-table th.l, .stores-table td.l { text-align: left; }
 .day-rows-table tfoot td.tint-green { background: #D9EFE1; }
 .day-rows-table tfoot td.tint-amber { background: #F6E6C8; }
 .day-rows-table tfoot td.tint-grey { background: #E3E8EF; }

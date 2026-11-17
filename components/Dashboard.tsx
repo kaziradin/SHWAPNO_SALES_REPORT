@@ -11,9 +11,10 @@ import { headlessWithin, uniqSorted } from "@/lib/daily";
 import FilterBar, { CMP_LABEL, SEGMENT_LABELS, type Cmp } from "./FilterBar";
 import Overview from "./Overview";
 import Daily from "./Daily";
+import Stores from "./Stores";
 import { WIDE, WideCells } from "./HeadMeasures";
 
-type Tab = "overview" | "heads" | "daily" | "outlets";
+type Tab = "overview" | "heads" | "daily" | "stores" | "outlets";
 
 export default function Dashboard({ report, months, daily }: { report: Report; months: MonthOverview[]; daily: DailyData }) {
   const [cmp, setCmp] = useState<Cmp>("sply");
@@ -88,12 +89,12 @@ export default function Dashboard({ report, months, daily }: { report: Report; m
           <div className="sub">
             {tab === "overview" && monthData
               ? <>Till {longDate(monthData.asOf)} · {monthData.periodLabel} · compared with the {CMP_LABEL[cmp].long}</>
-              : tab === "daily"
+              : tab === "daily" || tab === "stores"
                 ? <>Till {longDate(daily.asOf)} · {daily.periodLabel} · each day compared with the same day last year</>
                 : <>Till {longDate(report.asOf)} · {report.periodLabel} · compared with the {CMP_LABEL[cmp].long}</>}
           </div>
         </div>
-        {tab !== "overview" && tab !== "daily" && <div className="controls">
+        {tab !== "overview" && tab !== "daily" && tab !== "stores" && <div className="controls">
           <div className="seg" role="group" aria-label="Comparison period">
             {(["sply", "splm"] as Cmp[]).map((c) => (
               <button key={c} aria-pressed={cmp === c} onClick={() => setCmp(c)} title={CMP_LABEL[c].long}>
@@ -107,6 +108,7 @@ export default function Dashboard({ report, months, daily }: { report: Report; m
       <nav className="tabs" role="tablist">
         {([
           ["daily", "Category wise performance"],
+          ["stores", "Store wise performance"],
           ["outlets", "Outlets & targets"],
         ] as [Tab, string][]).map(([k, label]) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{label}</button>
@@ -123,6 +125,7 @@ export default function Dashboard({ report, months, daily }: { report: Report; m
       )}
       {tab === "heads" && <Heads report={report} cmp={cmp} daily={daily} onCmp={setCmp} />}
       {tab === "daily" && <Daily daily={daily} />}
+      {tab === "stores" && <Stores />}
       {tab === "outlets" && <Outlets outlets={report.outlets} cmp={cmp} />}
 
       <p className="foot">
