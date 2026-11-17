@@ -36,7 +36,9 @@ export const WIDE: WideMeasure[] = [
 ];
 
 /** One measure in the head table: this period, the comparison, the difference and, where it applies, the growth. */
-export function WideCells({ m, r }: { m: WideMeasure; r: Partial<HeadRow> }) {
+export function WideCells({ m, r, tint, groupStart }: { m: WideMeasure; r: Partial<HeadRow>; tint?: string; groupStart?: boolean }) {
+  // the colour of a measure's columns, and on its first cell a line on the left edge (the Category wise performance tables)
+  const cls = (first: boolean) => [tint, first && groupStart ? "grp-start" : ""].filter(Boolean).join(" ") || undefined;
   const n = m.now(r) ?? null, l = m.last(r) ?? null;
   const d = n != null && l != null ? n - l : null;
   const g = growthOf(n, l);
@@ -46,10 +48,10 @@ export function WideCells({ m, r }: { m: WideMeasure; r: Partial<HeadRow> }) {
     : signedPct(d, 2);
   return (
     <>
-      <td>{value(n)}</td>
-      <td>{value(l)}</td>
-      <td><span className={`delta ${toneOfNum(d)}`}>{diff}</span></td>
-      {m.growth && <td><span className={`delta ${toneOfNum(g)}`}>{arrowOf(toneOfNum(g))}{signedPct(g, 2)}</span></td>}
+      <td className={cls(true)}>{value(n)}</td>
+      <td className={cls(false)}>{value(l)}</td>
+      <td className={cls(false)}><span className={`delta ${toneOfNum(d)}`}>{diff}</span></td>
+      {m.growth && <td className={cls(false)}><span className={`delta ${toneOfNum(g)}`}>{arrowOf(toneOfNum(g))}{signedPct(g, 2)}</span></td>}
     </>
   );
 }

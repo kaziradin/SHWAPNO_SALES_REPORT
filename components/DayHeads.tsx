@@ -13,6 +13,18 @@ export type DayCrpRow = { name: string; f: Figures; x: Ratios; cats: DayCatRow[]
 /** One head's figures for the chosen days on the Day wise sales tab, with the responsible persons under it. */
 export type DayHeadRow = { division: string; role: string; head: string; f: Figures; x: Ratios; crps: DayCrpRow[] };
 
+/** The measures of the Category wise performance tables, in the order and colours of the day table. Value adj is left out:
+ *  it is the difference between GPV+OI and GPV. */
+const MEASURE_ORDER = [
+  { label: "Sales", tint: "tint-blue", m: WIDE.find((w) => w.label === "Sales")! },
+  { label: "GPV", tint: "tint-green", m: WIDE.find((w) => w.label === "GPV")! },
+  { label: "GPV+OI", tint: "tint-green", m: { ...WIDE.find((w) => w.label === "Adjusted GPV")!, label: "GPV+OI" } },
+  { label: "GP%", tint: "tint-amber", m: WIDE.find((w) => w.label === "GP%")! },
+  { label: "GP+OI%", tint: "tint-amber", m: { ...WIDE.find((w) => w.label === "Adjusted GP%")!, label: "GP+OI%" } },
+  { label: "Footfall", tint: "tint-grey", m: WIDE.find((w) => w.label === "Footfall")! },
+  { label: "Basket", tint: "tint-grey", m: WIDE.find((w) => w.label === "Basket")! },
+];
+
 /** The figures as the head table's measures read them (this period, the comparison, and their ratios). */
 const asHeadRow = (f: Figures, x: Ratios): Partial<HeadRow> => ({
   sales: f.sales, salesLast: f.splySales,
@@ -34,23 +46,23 @@ export default function DayHeads({ rows, total, totalLabel, cmpShort, caption, o
   onOpen: (key: string) => void;
 }) {
   // footfall and basket show a dash where they cannot be counted exactly for the selection
-  const shown = WIDE;
+  const shown = MEASURE_ORDER;
   return (
     <div className="ov-panel ov-table-panel">
       <div className="ov-table-scroll">
-        <table className="ov-table dh">
+        <table className="ov-table dh tinted">
           <caption>{caption}</caption>
           <thead>
             <tr>
               <th scope="col" className="l dh-c1" title="Division">Div</th>
               <th scope="col" className="l dh-c2">Category role</th>
               <th scope="col" className="l dh-c3">Head</th>
-              {shown.map((m) => (
-                <Fragment key={m.label}>
-                  <th scope="col">{m.label} this</th>
-                  <th scope="col">{m.label} {cmpShort}</th>
-                  <th scope="col">Diff</th>
-                  {m.growth && <th scope="col">GR%</th>}
+              {shown.map((x) => (
+                <Fragment key={x.label}>
+                  <th scope="col" className={`${x.tint} grp-start`}>{x.label} this</th>
+                  <th scope="col" className={x.tint}>{x.label} {cmpShort}</th>
+                  <th scope="col" className={x.tint}>Diff</th>
+                  {x.m.growth && <th scope="col" className={x.tint}>GR%</th>}
                 </Fragment>
               ))}
             </tr>
@@ -63,7 +75,7 @@ export default function DayHeads({ rows, total, totalLabel, cmpShort, caption, o
                 <th scope="row" className="l dh-c3">
                   <button type="button" className="linkish" onClick={() => onOpen(`${r.division}|${r.head}`)}>{r.head} ›</button>
                 </th>
-                {shown.map((m) => <WideCells key={m.label} m={m} r={asHeadRow(r.f, r.x)} />)}
+                {shown.map((x) => <WideCells key={x.label} m={x.m} r={asHeadRow(r.f, r.x)} tint={x.tint} groupStart />)}
               </tr>
             ))}
           </tbody>
@@ -71,7 +83,7 @@ export default function DayHeads({ rows, total, totalLabel, cmpShort, caption, o
             <tfoot>
               <tr>
                 <th scope="row" colSpan={3} className="l dh-foot">{totalLabel}</th>
-                {shown.map((m) => <WideCells key={m.label} m={m} r={asHeadRow(total.f, total.x)} />)}
+                {shown.map((x) => <WideCells key={x.label} m={x.m} r={asHeadRow(total.f, total.x)} tint={x.tint} groupStart />)}
               </tr>
             </tfoot>
           )}

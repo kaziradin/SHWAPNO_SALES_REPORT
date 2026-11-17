@@ -493,6 +493,25 @@ td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .day-rows-table tfoot th.dr-c1, .day-rows-table tfoot td.dr-c2 { background: #EEF3FB; z-index: 4; }
 .day-rows-table .dr-c2 { box-shadow: 4px 0 6px -4px rgba(15, 39, 68, 0.22); }
 .day-rows-table tfoot td.tint-blue { background: #DDE8F8; }
+
+/* Colour tints of the measure columns, shared by the day table and the Category wise performance tables */
+.tinted td.tint-blue { background: #F1F6FE; }
+.tinted td.tint-green { background: #F0F9F3; }
+.tinted td.tint-amber { background: #FDF7EE; }
+.tinted td.tint-grey { background: #F6F7F9; }
+.tinted thead th.tint-blue { background: #DCE8FB; }
+.tinted thead th.tint-green { background: #DAF0E2; }
+.tinted thead th.tint-amber { background: #F8E8CB; }
+.tinted thead th.tint-grey { background: #E5E9EF; }
+.tinted tfoot td.tint-blue { background: #DDE8F8; }
+.tinted tfoot td.tint-green { background: #D9EFE1; }
+.tinted tfoot td.tint-amber { background: #F6E6C8; }
+.tinted tfoot td.tint-grey { background: #E3E8EF; }
+.tinted .grp-start { border-left: 2px solid #D8E0EA; }
+.tinted .grp-start.tint-blue { border-left-color: #3B6FD8; }
+.tinted .grp-start.tint-green { border-left-color: #2E9E5B; }
+.tinted .grp-start.tint-amber { border-left-color: #C98A1B; }
+.tinted .grp-start.tint-grey { border-left-color: #8A96A8; }
 .day-rows-table tfoot td.tint-green { background: #D9EFE1; }
 .day-rows-table tfoot td.tint-amber { background: #F6E6C8; }
 .day-rows-table tfoot td.tint-grey { background: #E3E8EF; }
