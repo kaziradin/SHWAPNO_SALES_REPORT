@@ -162,7 +162,7 @@ export default function DayByHead({ heads, totalF, detailRows, crpFf, days, cmpS
       </div>
       <div className="ov-panel ov-table-panel">
         <div className="ov-table-scroll">
-          <table className="ov-table dh">
+          <table className="ov-table dh day-head-table">
             <caption>{scope}. Click a head&apos;s › to see its persons, and a person&apos;s › to see their categories.</caption>
             <thead>
               <tr>

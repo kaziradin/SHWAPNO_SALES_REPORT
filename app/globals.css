@@ -338,6 +338,8 @@ td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .dh { font-size: 12px; }
 .dh th, .dh td { padding: 6px 8px; }
 .dh thead th { font-size: 11.5px; }
+/* Day by head table: the growth and change under each figure are smaller than the figures */
+.day-head-table .delta { font-size: 10.5px; }
 .dh .dh-c1, .dh .dh-c2, .dh .dh-c3, .dh .dh-foot { position: sticky; z-index: 2; background: #fff; }
 .dh thead th.dh-c1, .dh thead th.dh-c2, .dh thead th.dh-c3 { background: #F6F8FB; z-index: 3; }
 .dh tfoot th.dh-foot { background: #F9FAFC; left: 0; z-index: 2; }
