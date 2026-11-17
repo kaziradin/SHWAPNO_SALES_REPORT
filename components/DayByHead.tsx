@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import type { CrpFf, DailyHead, DayFields, DetailRow } from "@/lib/types";
-import { abbrOf, crOrDash, full, pct, titleCase } from "@/lib/format";
+import { abbrOf, arrowOf, crOrDash, full, growth, pct, signedPct, titleCase, toneOfNum } from "@/lib/format";
 import { dayMonth, dayWeekday, isFriSat } from "@/lib/daily";
 
 type Measure = "sales" | "gpv" | "gp" | "bs" | "ff";
@@ -15,7 +15,9 @@ const MEASURES: { k: Measure; l: string }[] = [
 ];
 
 /** One row of the table: sales and GPV for each day (in taka), and footfall where it can be counted (null where not). */
-type Line = { name: string; division?: string; role?: string; s: (number | null)[]; g: (number | null)[]; f: (number | null)[] | null; drill: boolean; key: string };
+type Line = { name: string; division?: string; role?: string; s: (number | null)[]; g: (number | null)[]; f: (number | null)[] | null;
+  /** The same day last year: sales, GPV and footfall, for the change under each figure. */
+  sl: (number | null)[]; gl: (number | null)[]; fl: (number | null)[] | null; drill: boolean; key: string };
 
 /** Adds day arrays together; a day with no value in any of them stays blank. */
 const addDays = (arrs: ((number | null)[] | null)[], n: number): (number | null)[] =>
@@ -50,6 +52,49 @@ function totalAt(l: Line, m: Measure): number | null {
   return l.f ? sumOf(l.f) : null;
 }
 
+/** One measure for one day of a row, against the same day last year. */
+function lastAt(l: Line, m: Measure, i: number): number | null {
+  const s = l.sl[i], g = l.gl[i], f = l.fl ? l.fl[i] : null;
+  if (m === "sales") return s;
+  if (m === "gpv") return g;
+  if (m === "gp") return s && g != null ? g / s : null;
+  if (m === "bs") return s != null && f ? s / f : null;
+  return f;
+}
+
+/** One measure over every day of a row, against the same days last year. */
+function totalLastAt(l: Line, m: Measure): number | null {
+  const s = sumOf(l.sl), g = sumOf(l.gl);
+  if (m === "sales") return s;
+  if (m === "gpv") return g;
+  if (m === "gp") return s ? g / s : null;
+  if (m === "bs") return l.fl && sumOf(l.fl) ? s / sumOf(l.fl) : null;
+  return l.fl ? sumOf(l.fl) : null;
+}
+
+/** The change of a figure against the same day last year: a growth for money and counts, the difference in points for GP%. */
+function changeOf(m: Measure, n: number | null, l: number | null): { text: string; tone: string } | null {
+  if (m === "gp") {
+    if (n == null || l == null) return null;
+    const d = n - l;
+    return { text: signedPct(d, 2), tone: toneOfNum(d) };
+  }
+  const g = growth(n, l);
+  if (g == null) return null;
+  return { text: `${arrowOf(toneOfNum(g))}${signedPct(g, 2)}`, tone: toneOfNum(g) };
+}
+
+/** One figure in the table, with its change against the same day last year underneath. */
+function ValueCell({ m, n, l, style }: { m: Measure; n: number | null; l: number | null; style?: CSSProperties }) {
+  const c = changeOf(m, n, l);
+  return (
+    <td style={style}>
+      <div>{shown(n, m)}</div>
+      {c && <div><span className={`delta ${c.tone}`}>{c.text}</span></div>}
+    </td>
+  );
+}
+
 const shown = (v: number | null, m: Measure) =>
   v == null ? "–" : m === "sales" || m === "gpv" ? crOrDash(v) : m === "gp" ? pct(v, 2) : full(v);
 
@@ -76,21 +121,22 @@ export default function DayByHead({ heads, totalF, detailRows, crpFf, days, cmpS
   let lines: Line[];
   let total: Line;
   if (level === 0) {
-    lines = heads.map((h) => ({ name: h.head, division: h.division, role: h.role, s: h.sales, g: h.gpv, f: h.ff, drill: true, key: `${h.division}|${h.head}` }));
-    total = { name: "Total (all divisions)", s: totalF.sales, g: totalF.gpv, f: totalF.ff, drill: false, key: "" };
+    lines = heads.map((h) => ({ name: h.head, division: h.division, role: h.role, s: h.sales, g: h.gpv, f: h.ff, sl: h.splySales, gl: h.splyGpv, fl: h.splyFf, drill: true, key: `${h.division}|${h.head}` }));
+    total = { name: "Total (all divisions)", s: totalF.sales, g: totalF.gpv, f: totalF.ff, sl: totalF.splySales, gl: totalF.splyGpv, fl: totalF.splyFf, drill: false, key: "" };
   } else if (level === 1 && headOf) {
     const byCrp = new Map<string, DetailRow[]>();
     for (const r of rowsOfHead) byCrp.set(r.crp as string, [...(byCrp.get(r.crp as string) ?? []), r]);
     lines = [...byCrp.entries()]
-      .map(([crp, rs]) => ({ name: crp, s: addDays(rs.map((r) => r.sales), n), g: addDays(rs.map((r) => r.gpv), n), f: ffOfCrp(crp)?.ff ?? null, drill: true, key: crp, division: headOf.division, role: headOf.role }))
+      .map(([crp, rs]) => ({ name: crp, s: addDays(rs.map((r) => r.sales), n), g: addDays(rs.map((r) => r.gpv), n), f: ffOfCrp(crp)?.ff ?? null, sl: addDays(rs.map((r) => r.splySales), n), gl: addDays(rs.map((r) => r.splyGpv), n), fl: ffOfCrp(crp)?.splyFf ?? null, drill: true, key: crp, division: headOf.division, role: headOf.role }))
       .sort((a, b) => sumOf(b.s) - sumOf(a.s));
-    total = { name: "Total", s: headOf.sales, g: headOf.gpv, f: headOf.ff, drill: false, key: "" };
+    total = { name: "Total", s: headOf.sales, g: headOf.gpv, f: headOf.ff, sl: headOf.splySales, gl: headOf.splyGpv, fl: headOf.splyFf, drill: false, key: "" };
   } else {
     const rs = rowsOfHead.filter((r) => r.crp === crpName);
     lines = rs
-      .map((r) => ({ name: titleCase(r.category as string), s: r.sales, g: r.gpv, f: r.ff, drill: false, key: r.category as string, division: headOf?.division, role: headOf?.role }))
+      .map((r) => ({ name: titleCase(r.category as string), s: r.sales, g: r.gpv, f: r.ff, sl: r.splySales, gl: r.splyGpv, fl: r.splyFf, drill: false, key: r.category as string, division: headOf?.division, role: headOf?.role }))
       .sort((a, b) => sumOf(b.s) - sumOf(a.s));
-    total = { name: "Total", s: addDays(rs.map((r) => r.sales), n), g: addDays(rs.map((r) => r.gpv), n), f: ffOfCrp(crpName)?.ff ?? null, drill: false, key: "" };
+    total = { name: "Total", s: addDays(rs.map((r) => r.sales), n), g: addDays(rs.map((r) => r.gpv), n), f: ffOfCrp(crpName)?.ff ?? null,
+      sl: addDays(rs.map((r) => r.splySales), n), gl: addDays(rs.map((r) => r.splyGpv), n), fl: ffOfCrp(crpName)?.splyFf ?? null, drill: false, key: "" };
   }
 
   const activeMeasure = measure;
@@ -143,9 +189,10 @@ export default function DayByHead({ heads, totalF, detailRows, crpFf, days, cmpS
                       : l.name}
                   </td>
                   {days.map((d, i) => (
-                    <td key={d.date} style={{ background: isFriSat(d.date) ? "var(--surface-1)" : undefined }}>{shown(valueAt(l, activeMeasure, i), activeMeasure)}</td>
+                    <ValueCell key={d.date} m={activeMeasure} n={valueAt(l, activeMeasure, i)} l={lastAt(l, activeMeasure, i)}
+                      style={{ background: isFriSat(d.date) ? "var(--surface-1)" : undefined }} />
                   ))}
-                  <td style={{ fontWeight: 500 }}>{shown(totalAt(l, activeMeasure), activeMeasure)}</td>
+                  <ValueCell m={activeMeasure} n={totalAt(l, activeMeasure)} l={totalLastAt(l, activeMeasure)} style={{ fontWeight: 500 }} />
                 </tr>
               ))}
             </tbody>
@@ -153,9 +200,10 @@ export default function DayByHead({ heads, totalF, detailRows, crpFf, days, cmpS
               <tr>
                 <th scope="row" colSpan={3} className="l dh-foot">{total.name}</th>
                 {days.map((d, i) => (
-                  <td key={d.date} style={{ fontWeight: 500, background: isFriSat(d.date) ? "var(--surface-1)" : undefined }}>{shown(valueAt(total, activeMeasure, i), activeMeasure)}</td>
+                  <ValueCell key={d.date} m={activeMeasure} n={valueAt(total, activeMeasure, i)} l={lastAt(total, activeMeasure, i)}
+                    style={{ fontWeight: 500, background: isFriSat(d.date) ? "var(--surface-1)" : undefined }} />
                 ))}
-                <td style={{ fontWeight: 500 }}>{shown(totalAt(total, activeMeasure), activeMeasure)}</td>
+                <ValueCell m={activeMeasure} n={totalAt(total, activeMeasure)} l={totalLastAt(total, activeMeasure)} style={{ fontWeight: 500 }} />
               </tr>
             </tfoot>
           </table>
