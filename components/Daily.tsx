@@ -64,6 +64,10 @@ type FfSel = { division: string; head: DailyHead | null; crp: string; cat: strin
 const headKey = (h: { division: string; role: string; head: string }) => `${h.division}|${h.role}|${h.head}`;
 const headLabel = (h: { division: string; role: string; head: string }) => `${abbrOf(h.division)} - ${roleName(h.role)} - ${h.head}`;
 
+/** A date as the day table shows it: 01 Nov 2026 · Sun. */
+const dateFull = (iso: string) =>
+  `${new Date(`${iso}T00:00:00`).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })} · ${dayWeekday(iso)}`;
+
 /** One metric's cells in a row of the day table: this period, the comparison, the difference and, for money and counts, the growth. */
 function RowMetric({ m, n, l }: { m: Metric; n: number | null; l: number | null }) {
   const shownValue = (v: number | null) => (v == null ? "–" : m.kind === "ratio" ? pct(v, 2) : full(v));
@@ -488,8 +492,8 @@ export default function Daily({ daily }: { daily: DailyData }) {
 
       <div className="ov-section-head"><h2>Day by day, vs {CMP_SHORT[cmp]}</h2></div>
       <div className="ov-panel ov-table-panel">
-        <div className="ov-table-scroll">
-          <table className="ov-table" style={{ fontSize: 12.5 }}>
+        <div className="ov-table-scroll day-rows-scroll">
+          <table className="ov-table day-rows-table">
             <caption>
               {selectionLabel}, {STORE_LABEL[group].toLowerCase()}, {periodName}. Each day against the same day {CMP_WORD[cmp]}.
             </caption>
@@ -510,8 +514,8 @@ export default function Daily({ daily }: { daily: DailyData }) {
             <tbody>
               {chosen.map((r) => (
                 <tr key={r.date}>
-                  <td className="l">{dayLong(r.date)}</td>
-                  <td className="l">{dayLong(r.prev)}</td>
+                  <td className="l">{dateFull(r.date)}</td>
+                  <td className="l">{dateFull(r.prev)}</td>
                   {metrics.map((m) => <RowMetric key={m.label} m={m} n={m.now(r.f, r.x)} l={m.prev(r.f, r.x)} />)}
                 </tr>
               ))}
