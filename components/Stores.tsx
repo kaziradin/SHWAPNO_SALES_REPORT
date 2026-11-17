@@ -152,19 +152,19 @@ function StoreTable({ data }: { data: StoresData }) {
   const cards: Card[] = [
     { label: "Sales", value: crOrDash(s), change: growth(s, sl), ratio: false,
       line1: `SPLY ${crOrDash(sl)} · diff ${diffMoney(s - sl)}`,
-      line2: ts != null ? `Target ${crOrDash(ts)} · ACH ${pct(achSalesPct, 2)}` : noTargetText },
+      line2: ts != null ? `TGT ${crOrDash(ts)} · ACH ${pct(achSalesPct, 2)}` : noTargetText },
     { label: "GPV", value: crOrDash(g), change: growth(g, gl), ratio: false,
       line1: `SPLY ${crOrDash(gl)} · diff ${diffMoney(g - gl)}`,
-      line2: tg != null ? `Target ${crOrDash(tg)} · ACH ${pct(achGpvPct, 2)}` : noTargetText },
+      line2: tg != null ? `TGT ${crOrDash(tg)} · ACH ${pct(achGpvPct, 2)}` : noTargetText },
     { label: "GP%", value: pct(gp, 2), change: gp != null && gpl != null ? gp - gpl : null, ratio: true,
       line1: `SPLY ${pct(gpl, 2)}`,
-      line2: tgpPct != null ? `Target ${pct(tgpPct, 2)} · diff ${signedPct(achGpPct != null ? achGpPct - tgpPct : null, 2)}` : noTargetText },
+      line2: tgpPct != null ? `TGT ${pct(tgpPct, 2)} · diff ${signedPct(achGpPct != null ? achGpPct - tgpPct : null, 2)}` : noTargetText },
     { label: "Footfall", value: kFmt(f), change: growth(f, fl), ratio: false,
       line1: `SPLY ${kFmt(fl)} · diff ${diffCount(f - fl)}`,
-      line2: tf != null ? `Target ${kFmt(tf)} · ACH ${pct(achFfPct, 2)}` : noTargetText },
+      line2: tf != null ? `TGT ${kFmt(tf)} · ACH ${pct(achFfPct, 2)}` : noTargetText },
     { label: "Basket", value: full(bs), change: growth(bs, bsl), ratio: false,
       line1: `SPLY ${full(bsl)} · diff ${bs != null && bsl != null ? diffFull(bs - bsl) : "–"}`,
-      line2: tb != null ? `Target ${full(tb)} · ACH ${pct(achBsPct, 2)}` : noTargetText },
+      line2: tb != null ? `TGT ${full(tb)} · ACH ${pct(achBsPct, 2)}` : noTargetText },
   ];
 
   // the filters are at their defaults: all stores, own and franchise, all divisions and outlets, the latest period, vs SPLY
