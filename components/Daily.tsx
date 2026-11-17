@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import type { CrpFf, DailyData, DailyDetailData, DailyHead, DayFields, DetailRow, DivFf, StoreKey } from "@/lib/types";
 import { abbrOf, arrowOf, crFmt, crOrDash, crSigned, full, growth, pct, roleName, signedPct, titleCase, toneOfNum } from "@/lib/format";
 import { downloadExcel, ExportButton, type ExportCell, type ExportCol } from "@/lib/export";
@@ -63,6 +63,24 @@ type FfSel = { division: string; head: DailyHead | null; crp: string; cat: strin
 
 const headKey = (h: { division: string; role: string; head: string }) => `${h.division}|${h.role}|${h.head}`;
 const headLabel = (h: { division: string; role: string; head: string }) => `${abbrOf(h.division)} - ${roleName(h.role)} - ${h.head}`;
+
+/** One metric's cells in a row of the day table: this period, the comparison, the difference and, for money and counts, the growth. */
+function RowMetric({ m, n, l }: { m: Metric; n: number | null; l: number | null }) {
+  const shownValue = (v: number | null) => (v == null ? "–" : m.kind === "ratio" ? pct(v, 2) : full(v));
+  const d = difference(n, l);
+  const diffText = d == null ? "–" : m.kind === "ratio" ? signedPct(d, 2) : `${d >= 0 ? "+" : "−"}${full(Math.abs(d))}`;
+  const g = m.kind === "ratio" ? null : growth(n, l);
+  return (
+    <>
+      <td>{shownValue(n)}</td>
+      <td>{shownValue(l)}</td>
+      <td><span className={`delta ${toneOfNum(d)}`}>{diffText}</span></td>
+      {m.kind !== "ratio" && (
+        <td><span className={`delta ${toneOfNum(g)}`}>{g == null ? "–" : `${arrowOf(toneOfNum(g))}${signedPct(g, 2)}`}</span></td>
+      )}
+    </>
+  );
+}
 
 /** One chart's points: this month and the same day last year for each day. */
 const seriesOf = (rows: DayRow[], pick: (r: DayRow) => [number | null, number | null]): DayPoint[] =>
@@ -467,6 +485,49 @@ export default function Daily({ daily }: { daily: DailyData }) {
           cmpShort={CMP_SHORT[cmp]} caption={`Category heads for ${periodName}, ${STORE_LABEL[group].toLowerCase()}, vs ${CMP_SHORT[cmp]}.`}
           onOpen={setOpenHead} />
       )}
+
+      <div className="ov-section-head"><h2>Day by day, vs {CMP_SHORT[cmp]}</h2></div>
+      <div className="ov-panel ov-table-panel">
+        <div className="ov-table-scroll">
+          <table className="ov-table" style={{ fontSize: 12.5 }}>
+            <caption>
+              {selectionLabel}, {STORE_LABEL[group].toLowerCase()}, {periodName}. Each day against the same day {CMP_WORD[cmp]}.
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col" className="l">This month date</th>
+                <th scope="col" className="l">Same day {CMP_WORD[cmp]} date</th>
+                {metrics.map((m) => (
+                  <Fragment key={m.label}>
+                    <th scope="col">{m.label} this</th>
+                    <th scope="col">{m.label} {CMP_SHORT[cmp]}</th>
+                    <th scope="col">Diff</th>
+                    {m.kind !== "ratio" && <th scope="col">GR %</th>}
+                  </Fragment>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {chosen.map((r) => (
+                <tr key={r.date}>
+                  <td className="l">{dayLong(r.date)}</td>
+                  <td className="l">{dayLong(r.prev)}</td>
+                  {metrics.map((m) => <RowMetric key={m.label} m={m} n={m.now(r.f, r.x)} l={m.prev(r.f, r.x)} />)}
+                </tr>
+              ))}
+            </tbody>
+            {chosen.length > 0 && (
+              <tfoot>
+                <tr>
+                  <th scope="row" className="l">Total · {chosen.length} {chosen.length === 1 ? "day" : "days"}</th>
+                  <td />
+                  {metrics.map((m) => <RowMetric key={m.label} m={m} n={m.now(total, totalX)} l={m.prev(total, totalX)} />)}
+                </tr>
+              </tfoot>
+            )}
+          </table>
+        </div>
+      </div>
 
       <div className="ov-section-head"><h2>Day by day, by head</h2></div>
       <DayByHead heads={division ? g.heads.filter((h) => h.division === division) : g.heads} totalF={divisionTotal ?? g.total}
