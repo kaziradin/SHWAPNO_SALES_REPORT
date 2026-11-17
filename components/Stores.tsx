@@ -7,6 +7,9 @@ import { CMP_SHORT, CMP_WORD, type Cmp, dayLong, type StoreGroup, type StoreType
 
 type Kind = "money" | "count" | "ratio";
 
+/** One KPI card: the figure, its change against the comparison, and two lines (the comparison, and the target with ACH). */
+type Card = { label: string; value: string; change: number | null; ratio: boolean; line1: string; line2: string };
+
 /** The filter labels, as on the Category wise performance tab. */
 const STORE_GROUP_LABEL: Record<StoreGroup, string> = { all: "All stores", same: "Same stores" };
 const TYPE_LABEL: Record<StoreType, string> = { all: "Own and franchise", own: "Own stores", fran: "Franchise stores" };
@@ -123,21 +126,45 @@ function StoreTable({ data }: { data: StoresData }) {
   // the targets of the outlets shown that have one; achievement is their sales against those targets, so both cover the same outlets
   const tgtRows = rows.flatMap((x) => (x.tgt ? [{ now: x.now, tgt: x.tgt }] : []));
   const tgtTotal = addSums(tgtRows.map((x) => x.tgt));
-  const achSales = addSums(tgtRows.map((x) => x.now)).sales;
   const noTarget = rows.length - tgtRows.length;
   const ts = tgtRows.length ? tgtTotal.sales : null, tg = tgtRows.length ? tgtTotal.gpv : null, tf = tgtRows.length ? tgtTotal.ff : null;
   const tb = ts != null && tf ? ts / tf : null;
-  const ach = ts ? achSales / ts : null;
+  // achievement against target, on the outlets that have one: their sales, GPV and footfall against those targets
+  const achOf = addSums(tgtRows.map((x) => x.now));
+  const achSalesPct = ts ? achOf.sales / ts : null;
+  const achGpvPct = tg ? achOf.gpv / tg : null;
+  const achFfPct = tf ? achOf.ff / tf : null;
+  const achBsPct = tb && achOf.ff ? (achOf.sales / achOf.ff) / tb : null;
+  const tgpPct = ts && tg ? tg / ts : null;
+  const achGpPct = achOf.sales ? achOf.gpv / achOf.sales : null;
   const short = CMP_SHORT[cmp];
   const kFmt = (v: number) => `${(v / 1000).toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}K`;
-  const kpi = [
-    // the till-date achievement: the sales of the outlets with a target against their target, for the days chosen
-    { label: "Ach %", value: pct(ach, 2), sub: `Target: ${crOrDash(ts)}`, delta: ach != null ? ach - 1 : null, ratio: true },
-    { label: "Sales", value: crOrDash(s), sub: `${short}: ${crOrDash(sl)}`, delta: growth(s, sl), ratio: false },
-    { label: "GPV", value: crOrDash(g), sub: `${short}: ${crOrDash(gl)}`, delta: growth(g, gl), ratio: false },
-    { label: "GP%", value: pct(gp, 2), sub: `${short}: ${pct(gpl, 2)}`, delta: gp != null && gpl != null ? gp - gpl : null, ratio: true },
-    { label: "Footfall", value: kFmt(f), sub: `${short}: ${kFmt(fl)}`, delta: growth(f, fl), ratio: false },
-    { label: "Basket", value: full(bs), sub: `${short}: ${full(bsl)}`, delta: growth(bs, bsl), ratio: false },
+  // differences: money in crore, or in lakh below one crore; counts in K or as plain figures; ratios in points
+  const diffMoney = (v: number) => {
+    const a = Math.abs(v), sign = v < 0 ? "−" : "+";
+    return a >= 1e7 ? `${sign}${(a / 1e7).toFixed(2)} Cr` : `${sign}${(a / 1e5).toFixed(2)} L`;
+  };
+  const diffCount = (v: number) => `${v < 0 ? "−" : "+"}${kFmt(Math.abs(v))}`;
+  const diffFull = (v: number) => `${v < 0 ? "−" : "+"}${full(Math.abs(v))}`;
+  const noTargetText = "No target in the file";
+  const scope = [store === "same" ? "SAME STORES" : "ALL STORES", type === "own" ? "OWN" : type === "fran" ? "FRANCHISE" : ""]
+    .filter(Boolean).join(" · ");
+  const cards: Card[] = [
+    { label: "Sales", value: crOrDash(s), change: growth(s, sl), ratio: false,
+      line1: `SPLY ${crOrDash(sl)} · diff ${diffMoney(s - sl)}`,
+      line2: ts != null ? `Target ${crOrDash(ts)} · ACH ${pct(achSalesPct, 2)}` : noTargetText },
+    { label: "GPV", value: crOrDash(g), change: growth(g, gl), ratio: false,
+      line1: `SPLY ${crOrDash(gl)} · diff ${diffMoney(g - gl)}`,
+      line2: tg != null ? `Target ${crOrDash(tg)} · ACH ${pct(achGpvPct, 2)}` : noTargetText },
+    { label: "GP%", value: pct(gp, 2), change: gp != null && gpl != null ? gp - gpl : null, ratio: true,
+      line1: `SPLY ${pct(gpl, 2)}`,
+      line2: tgpPct != null ? `Target ${pct(tgpPct, 2)} · diff ${signedPct(achGpPct != null ? achGpPct - tgpPct : null, 2)}` : noTargetText },
+    { label: "Footfall", value: kFmt(f), change: growth(f, fl), ratio: false,
+      line1: `SPLY ${kFmt(fl)} · diff ${diffCount(f - fl)}`,
+      line2: tf != null ? `Target ${kFmt(tf)} · ACH ${pct(achFfPct, 2)}` : noTargetText },
+    { label: "Basket", value: full(bs), change: growth(bs, bsl), ratio: false,
+      line1: `SPLY ${full(bsl)} · diff ${bs != null && bsl != null ? diffFull(bs - bsl) : "–"}`,
+      line2: tb != null ? `Target ${full(tb)} · ACH ${pct(achBsPct, 2)}` : noTargetText },
   ];
 
   // the filters are at their defaults: all stores, own and franchise, all divisions and outlets, the latest period, vs SPLY
@@ -205,16 +232,17 @@ function StoreTable({ data }: { data: StoresData }) {
       </aside>
 
       <div className="day-main">
-        <section className="ov-kpis six" aria-label="Store wise key figures">
-          {kpi.map((k) => {
-            const tone = toneOfNum(k.delta);
-            const text = k.delta == null ? "" : k.ratio ? signedPct(k.delta, 2) : `${arrowOf(tone)}${signedPct(k.delta, 2)}`;
+        <section className="st-kpis" aria-label="Store wise key figures">
+          {cards.map((c) => {
+            const tone = toneOfNum(c.change);
+            const text = c.change == null ? "–" : c.ratio ? signedPct(c.change, 2) : `${arrowOf(tone)}${signedPct(c.change, 2)}`;
             return (
-              <div className="ov-kpi" key={k.label}>
-                <div className="ov-kpi-label">{k.label}</div>
-                <div className="ov-kpi-value">{k.value}</div>
-                <div className="ov-kpi-cmp">{k.sub}</div>
-                <div className="ov-kpi-delta"><span className={`ov-chg ${tone}`}>{text}</span></div>
+              <div className="st-kpi" key={c.label}>
+                <div className="st-kpi-label">{c.label} · {scope}</div>
+                <div className="st-kpi-value">{c.value}</div>
+                <span className={`st-pill ${tone}`}>{text}</span>
+                <div className="st-kpi-line">{c.line1}</div>
+                <div className="st-kpi-line">{c.line2}</div>
               </div>
             );
           })}
