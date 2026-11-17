@@ -453,10 +453,6 @@ export default function Daily({ daily }: { daily: DailyData }) {
       </div>
 
       <div className="ov-section-head"><h2>Category heads</h2></div>
-      <p className="ov-note">
-        {selectionLabel}, {STORE_LABEL[group].toLowerCase()}, {periodName}, compared with {compareName}. Click a head's › to see its responsible persons and their categories.
-        {!headSel && !fromRows && " The total covers every division, including sales with no head, so it can be a little above the sum of the heads."}
-      </p>
       {drillRow ? (
         <DayHeadDrill head={drillRow} cmpShort={CMP_SHORT[cmp]} scopeText={`${STORE_LABEL[group].toLowerCase()}, ${periodName}`}
           onBack={() => setOpenHead("")} />
