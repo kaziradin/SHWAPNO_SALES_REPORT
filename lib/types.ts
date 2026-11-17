@@ -95,10 +95,15 @@ export type StoreRow = {
   code: string; name: string; division: string; format: string; leader: string; zonal: string; regional: string; district: string;
   inZonal: boolean; status: "Own" | "Franchise" | "Unknown"; sameSply: boolean; sameSplm: boolean;
   daily: Record<"this" | "sply" | "splm", StoreDay[]>;
+  /** The outlet's target sales, GPV and footfall for each day of StoresData.days (from the Store wise target file);
+   *  null when the target file has no target for the outlet. */
+  target: StoreDay[] | null;
 };
 
 export type StoresData = {
   generatedAt: string; asOf: string; periodLabel: string; zonalFile: string;
+  /** The Store wise target file for the month of the data. */
+  targetFile: string;
   outletFiles: Record<string, string>;
   /** The days of the month, each with the day it is compared with last year and last month (as in data/daily.json). */
   days: { date: string; sply: string; splm: string }[];

@@ -42,6 +42,12 @@ function Metric({ now, last, kind, tint, label }: { now: number | null; last: nu
   );
 }
 
+/** One target figure: a money amount in crore, or a count as a plain figure. */
+function TargetCell({ v, kind, tint, start }: { v: number | null; kind: "money" | "count"; tint: string; start?: boolean }) {
+  const text = v == null ? "–" : kind === "money" ? crOrDash(v) : full(v);
+  return <td className={start ? `${tint} grp-start` : tint}>{text}</td>;
+}
+
 /** The Store wise performance tab: one row per outlet, with its leader, zonal manager, division, format and status.
  *  The filters sit in a panel beside the table, as on the Category wise performance tab. */
 export default function Stores() {
@@ -95,7 +101,7 @@ function StoreTable({ data }: { data: StoresData }) {
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
     return outlets
-      .map((r) => ({ r, now: sumDays(r.daily.this, chosen), last: sumDays(r.daily[cmp], chosen) }))
+      .map((r) => ({ r, now: sumDays(r.daily.this, chosen), last: sumDays(r.daily[cmp], chosen), tgt: r.target ? sumDays(r.target, chosen) : null }))
       .filter(({ r }) => store === "all" || (cmp === "sply" ? r.sameSply : r.sameSplm))
       .filter(({ r }) => type === "all" || (type === "own" ? r.status === "Own" : r.status === "Franchise"))
       .filter(({ r }) => !division || r.division === division)
@@ -114,6 +120,12 @@ function StoreTable({ data }: { data: StoresData }) {
   const f = total.ff, fl = totalLast.ff;
   const gp = s ? g / s : null, gpl = sl ? gl / sl : null;
   const bs = f ? s / f : null, bsl = fl ? sl / fl : null;
+  // the targets of the outlets shown that have one, and the basket target (sales / footfall)
+  const withTgt = rows.flatMap((x) => (x.tgt ? [x.tgt] : []));
+  const tgtTotal = addSums(withTgt);
+  const noTarget = rows.length - withTgt.length;
+  const ts = withTgt.length ? tgtTotal.sales : null, tg = withTgt.length ? tgtTotal.gpv : null, tf = withTgt.length ? tgtTotal.ff : null;
+  const tb = ts != null && tf ? ts / tf : null;
   const short = CMP_SHORT[cmp];
   const kFmt = (v: number) => `${(v / 1000).toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}K`;
   const kpi = [
@@ -207,6 +219,8 @@ function StoreTable({ data }: { data: StoresData }) {
           {rows.length} {rows.length === 1 ? "outlet" : "outlets"} · {periodName}. Each outlet is compared with the same days {CMP_WORD[cmp]}.{" "}
           {chosen.length === 0 && "No days fall in this range; choose dates inside the data period."}
           {from > to && " The two dates were swapped, so the range runs from the earlier to the later date."}
+          {" "}Targets from {data.targetFile}
+          {noTarget > 0 && `; ${noTarget} ${noTarget === 1 ? "outlet has" : "outlets have"} no target in it`}.
         </p>
 
         <div className="ov-panel ov-table-panel">
@@ -237,10 +251,14 @@ function StoreTable({ data }: { data: StoresData }) {
                   <th scope="col" className={`${TINT.Basket} grp-start`}>Basket this</th>
                   <th scope="col" className={TINT.Basket}>Basket {short}</th>
                   <th scope="col" className={TINT.Basket}>GR%</th>
+                  <th scope="col" className={`${TINT.Sales} grp-start`}>Sales TGT</th>
+                  <th scope="col" className={TINT.GPV}>GPV TGT</th>
+                  <th scope="col" className={TINT.Footfall}>FF TGT</th>
+                  <th scope="col" className={TINT.Basket}>BS TGT</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map(({ r, now, last }) => {
+                {rows.map(({ r, now, last, tgt }) => {
                   const gpNow = now.sales ? now.gpv / now.sales : null;
                   const gpLast = last.sales ? last.gpv / last.sales : null;
                   const basketNow = now.ff ? now.sales / now.ff : null;
@@ -260,6 +278,10 @@ function StoreTable({ data }: { data: StoresData }) {
                       <Metric now={gpNow} last={gpLast} kind="ratio" tint={TINT["GP%"]} label="GP%" />
                       <Metric now={now.ff} last={last.ff} kind="count" tint={TINT.Footfall} label="Footfall" />
                       <Metric now={basketNow} last={basketLast} kind="count" tint={TINT.Basket} label="Basket" />
+                      <TargetCell v={tgt ? tgt.sales : null} kind="money" tint={TINT.Sales} start />
+                      <TargetCell v={tgt ? tgt.gpv : null} kind="money" tint={TINT.GPV} />
+                      <TargetCell v={tgt ? tgt.ff : null} kind="count" tint={TINT.Footfall} />
+                      <TargetCell v={tgt && tgt.ff ? tgt.sales / tgt.ff : null} kind="count" tint={TINT.Basket} />
                     </tr>
                   );
                 })}
@@ -273,6 +295,10 @@ function StoreTable({ data }: { data: StoresData }) {
                     <Metric now={gp} last={gpl} kind="ratio" tint={TINT["GP%"]} label="GP%" />
                     <Metric now={f} last={fl} kind="count" tint={TINT.Footfall} label="Footfall" />
                     <Metric now={bs} last={bsl} kind="count" tint={TINT.Basket} label="Basket" />
+                    <TargetCell v={ts} kind="money" tint={TINT.Sales} start />
+                    <TargetCell v={tg} kind="money" tint={TINT.GPV} />
+                    <TargetCell v={tf} kind="count" tint={TINT.Footfall} />
+                    <TargetCell v={tb} kind="count" tint={TINT.Basket} />
                   </tr>
                 </tfoot>
               )}

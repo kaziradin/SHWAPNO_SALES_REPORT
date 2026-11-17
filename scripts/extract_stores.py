@@ -13,6 +13,11 @@ Sources
 - Outlet_DV.xlsx (ShwapnoPowerBi folder): the outlet lists. Status (own or franchise) comes from the SAME/NEW OWN and FRAN
   lists; same store vs last year and vs last month come from the SPLY and SPLM SAME STORE lists.
 
+- Store wise target file in the ZONAL FILE folder: the "Store wise Target*.xlsx" whose day headers give the month of the
+  data (so the December file is picked up when it arrives; the newest is used if two match). It has four blocks of day
+  columns: sales, GPV, FF and BS targets. Each outlet gets its sales, GPV and footfall target for each day of the data.
+  The basket target is sales / footfall, as the workbook's BS block is on every day.
+
 Usage:  python scripts/extract_stores.py
 """
 import csv
@@ -103,6 +108,98 @@ def read_outlet_dv(path):
     return lists
 
 
+TARGET_GLOB = "Store wise Target*.xlsx"
+
+
+def cell(row, j):
+    return row[j] if j < len(row) else None
+
+
+def target_num(v):
+    """A target figure as a number; blanks and error values such as #DIV/0! count as zero."""
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def read_top(path):
+    """The first four rows of a target workbook (its label row and header row), read without loading the rest."""
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    try:
+        return [tuple(r) for r in wb.worksheets[0].iter_rows(min_row=1, max_row=4, values_only=True)]
+    finally:
+        wb.close()
+
+
+def target_layout(top):
+    """The four day blocks of the target sheet (sales, GPV, FF, BS), from its label row and header row. Each block is a
+    run of date columns over the same days; the FF and BS blocks are labelled in the row above their first column."""
+    labels, header = top[1], top[3]
+    runs = []
+    for j, v in enumerate(header):
+        if isinstance(v, dt.datetime):
+            if runs and runs[-1]["end"] == j - 1:
+                runs[-1]["end"] = j
+                runs[-1]["dates"].append(v.date())
+            else:
+                runs.append({"start": j, "end": j, "dates": [v.date()]})
+    if len(runs) != 4 or any(r["dates"] != runs[0]["dates"] for r in runs):
+        raise SystemExit("The target sheet is not in the expected layout: four blocks of day columns (sales, GPV, FF, BS) "
+                         "over the same days.")
+    if str(cell(labels, runs[2]["start"]) or "").strip() != "FF" or str(cell(labels, runs[3]["start"]) or "").strip() != "BS":
+        raise SystemExit("The target sheet's FF and BS labels are not above the expected columns.")
+    return runs
+
+
+def target_month(path):
+    d = target_layout(read_top(path))[0]["dates"][0]
+    return f"{d.year:04d}-{d.month:02d}"
+
+
+def pick_target(folder, month):
+    """The Store wise target file for the month of the data, found from the day headers of each file, so a file for a
+    new month (such as 'Store wise TargetDEC26.xlsx') is picked up when it arrives. The newest is used if several match."""
+    found = [p for p in folder.glob(TARGET_GLOB) if not p.name.startswith("~$") and target_month(p) == month]
+    f = newest(found)
+    if f is None:
+        raise SystemExit(f"No store wise target file for {month} in {folder}: expected a name like 'Store wise Targetnov26.xlsx'")
+    return f
+
+
+def read_targets(path):
+    """Per outlet code, the target sales, GPV and footfall of each day of the target month:
+    {"dates": [ISO dates], "codes": {code: [[sales, GPV, footfall] per date]}}."""
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    try:
+        rows = wb.worksheets[0].iter_rows(values_only=True)
+        top = [tuple(next(rows)) for _ in range(4)]
+        runs = target_layout(top)
+        header = list(top[3])
+        code_col = next(j for j, v in enumerate(header) if str(v or "").strip() == "Outlet Code")
+        dates = [d.isoformat() for d in runs[0]["dates"]]
+        codes, blank = {}, 0
+        for r in rows:
+            code = str(cell(r, code_col) or "").strip()
+            if not code:
+                blank += 1
+                if blank > 50:  # the data ends in a long run of empty rows
+                    break
+                continue
+            blank = 0
+            codes[code] = [[target_num(cell(r, runs[0]["start"] + k)), target_num(cell(r, runs[1]["start"] + k)),
+                            target_num(cell(r, runs[2]["start"] + k))] for k in range(len(dates))]
+    finally:
+        wb.close()
+    return {"dates": dates, "codes": codes}
+
+
+def day_targets(per_date, day_k):
+    """One outlet's target [sales, GPV, footfall] for each day of the data; zero where the target file has no such day.
+    Footfall keeps two decimals, so the basket target (sales / footfall) is not distorted by rounding."""
+    return [[round(per_date[k][0]), round(per_date[k][1]), round(per_date[k][2], 2)] if k is not None else [0, 0, 0] for k in day_k]
+
+
 def main():
     daily = json.loads(DAILY_JSON.read_text(encoding="utf-8"))
     days = daily["days"]  # each: date (this month), sply, splm
@@ -124,12 +221,19 @@ def main():
     for k, f in kinds.items():
         print(f"{k} outlet file: {f.name}")
     print("Outlet_DV:", OUTLET_DV.name)
+    target_file = pick_target(ZONAL_FOLDER, days[0]["date"][:7])
+    print("Store wise target:", target_file.name)
 
     zonal = read_zonal(zonal_file)
     dv = read_outlet_dv(OUTLET_DV)
     this = read_outlet_file(kinds["This"])
     sply = read_outlet_file(kinds["SPLY"])
     splm = read_outlet_file(kinds["SPLM"])
+    targets = read_targets(target_file)
+    tgt_index = {d: k for k, d in enumerate(targets["dates"])}
+    day_k = [tgt_index.get(d["date"][:10]) for d in days]  # the target file's column of each day of the data
+    if any(k is None for k in day_k):
+        print("No target for", [d["date"][:10] for d, k in zip(days, day_k) if k is None])
 
     # the days of the dashboard: this month's days, and the matching days last year and last month. Each outlet gets one
     # [sales, GPV, footfall] per day, so the Store wise tab can total any From-To range of the month.
@@ -181,6 +285,7 @@ def main():
             "status": status_of(code),
             "sameSply": code in dv.get("SPLY SAME STORE", set()),
             "sameSplm": code in dv.get("SPLM SAME STORE", set()),
+            "target": day_targets(targets["codes"][code], day_k) if code in targets["codes"] else None,
             "daily": {p: [[round(s), round(g), round(f)] for s, g, f in per[p][code]] for p in periods},
         })
 
@@ -193,11 +298,14 @@ def main():
         day_total = sum(v or 0 for v in t[key])
         print(f"{p}: outlets {outlet_total:,.0f} vs dashboard {day_total:,.0f} ({(outlet_total / day_total - 1) * 100:+.3f}%)")
 
+    with_target = sum(1 for o in outlets if o["target"] is not None)
+    print(f"targets: {with_target} of {len(outlets)} outlets have a target in {target_file.name}")
     out = {
         "generatedAt": dt.datetime.now().isoformat(timespec="seconds"),
         "asOf": daily["asOf"],
         "periodLabel": daily["periodLabel"],
         "zonalFile": zonal_file.name,
+        "targetFile": target_file.name,
         "outletFiles": {k: f.name for k, f in kinds.items()},
         "days": [{"date": d["date"][:10], "sply": d["sply"][:10], "splm": d["splm"][:10]} for d in days],
         "outlets": outlets,
