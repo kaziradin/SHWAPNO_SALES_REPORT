@@ -166,6 +166,10 @@ export default function DayByHead({ heads, totalF, detailRows, crpFf, days, cmpS
 
   return (
     <div>
+      {level > 0 && (
+        <button type="button" className="linkish" style={{ display: "block", fontSize: 13, margin: "0 0 8px" }}
+          onClick={() => { setHeadKey(null); setCrpName(null); }}>← Back to all heads</button>
+      )}
       <nav aria-label="Drill path" style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", fontSize: 13, margin: "0 0 10px" }}>
         {level === 0
           ? <span style={{ fontWeight: 500 }}>All heads</span>
