@@ -504,8 +504,8 @@ export default function Daily({ daily }: { daily: DailyData }) {
             </caption>
             <thead>
               <tr>
-                <th scope="col" className="l">This month date</th>
-                <th scope="col" className="l">Same day {CMP_WORD[cmp]} date</th>
+                <th scope="col" className="l dr-c1">This month date</th>
+                <th scope="col" className="l dr-c2">Same day {CMP_WORD[cmp]} date</th>
                 {metrics.map((m) => (
                   <Fragment key={m.label}>
                     <th scope="col" className={`${DAY_TINT[m.label]} grp-start`}>{m.label} this</th>
@@ -519,8 +519,8 @@ export default function Daily({ daily }: { daily: DailyData }) {
             <tbody>
               {chosen.map((r) => (
                 <tr key={r.date}>
-                  <td className="l">{dateFull(r.date)}</td>
-                  <td className="l">{dateFull(r.prev)}</td>
+                  <td className="l dr-c1">{dateFull(r.date)}</td>
+                  <td className="l dr-c2">{dateFull(r.prev)}</td>
                   {metrics.map((m) => <RowMetric key={m.label} m={m} n={m.now(r.f, r.x)} l={m.prev(r.f, r.x)} tint={DAY_TINT[m.label]} />)}
                 </tr>
               ))}
@@ -528,8 +528,8 @@ export default function Daily({ daily }: { daily: DailyData }) {
             {chosen.length > 0 && (
               <tfoot>
                 <tr>
-                  <th scope="row" className="l">Total · {chosen.length} {chosen.length === 1 ? "day" : "days"}</th>
-                  <td />
+                  <th scope="row" className="l dr-c1">Total · {chosen.length} {chosen.length === 1 ? "day" : "days"}</th>
+                  <td className="dr-c2" />
                   {metrics.map((m) => <RowMetric key={m.label} m={m} n={m.now(total, totalX)} l={m.prev(total, totalX)} tint={DAY_TINT[m.label]} />)}
                 </tr>
               </tfoot>

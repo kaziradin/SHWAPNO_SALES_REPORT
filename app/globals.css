@@ -485,6 +485,11 @@ td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .day-rows-table .grp-start.tint-green { border-left-color: #2E9E5B; }
 .day-rows-table .grp-start.tint-amber { border-left-color: #C98A1B; }
 .day-rows-table .grp-start.tint-grey { border-left-color: #8A96A8; }
+.day-rows-table .dr-c1 { position: sticky; left: 0; width: 140px; min-width: 140px; max-width: 140px; background: #fff; z-index: 2; }
+.day-rows-table .dr-c2 { position: sticky; left: 140px; width: 170px; min-width: 170px; max-width: 170px; background: #fff; z-index: 2; }
+.day-rows-table thead th.dr-c1, .day-rows-table thead th.dr-c2 { background: #F6F8FB; z-index: 4; }
+.day-rows-table tfoot th.dr-c1, .day-rows-table tfoot td.dr-c2 { background: #EEF3FB; z-index: 4; }
+.day-rows-table .dr-c2 { box-shadow: 4px 0 6px -4px rgba(15, 39, 68, 0.22); }
 .day-rows-table tfoot td.tint-blue { background: #DDE8F8; }
 .day-rows-table tfoot td.tint-green { background: #D9EFE1; }
 .day-rows-table tfoot td.tint-amber { background: #F6E6C8; }
