@@ -5,11 +5,13 @@ import type { CrpFf, DailyHead, DayFields, DetailRow } from "@/lib/types";
 import { abbrOf, arrowOf, crOrDash, full, growth, pct, signedPct, titleCase, toneOfNum } from "@/lib/format";
 import { dayMonth, dayWeekday, isFriSat } from "@/lib/daily";
 
-type Measure = "sales" | "gpv" | "gp" | "bs" | "ff";
+type Measure = "sales" | "gpv" | "gpvoi" | "gp" | "goi" | "bs" | "ff";
 const MEASURES: { k: Measure; l: string }[] = [
   { k: "sales", l: "Sales" },
   { k: "gpv", l: "GPV" },
+  { k: "gpvoi", l: "GPV+OI" },
   { k: "gp", l: "GP%" },
+  { k: "goi", l: "GP+OI%" },
   { k: "bs", l: "Basket" },
   { k: "ff", l: "Footfall" },
 ];
@@ -17,7 +19,9 @@ const MEASURES: { k: Measure; l: string }[] = [
 /** One row of the table: sales and GPV for each day (in taka), and footfall where it can be counted (null where not). */
 type Line = { name: string; division?: string; role?: string; s: (number | null)[]; g: (number | null)[]; f: (number | null)[] | null;
   /** The same day last year: sales, GPV and footfall, for the change under each figure. */
-  sl: (number | null)[]; gl: (number | null)[]; fl: (number | null)[] | null; drill: boolean; key: string };
+  sl: (number | null)[]; gl: (number | null)[]; fl: (number | null)[] | null;
+  /** GPV+OI (GPV plus value adj) this period and last year. */
+  oi: (number | null)[]; oil: (number | null)[]; drill: boolean; key: string };
 
 /** Adds day arrays together; a day with no value in any of them stays blank. */
 const addDays = (arrs: ((number | null)[] | null)[], n: number): (number | null)[] =>
@@ -32,11 +36,17 @@ const addDays = (arrs: ((number | null)[] | null)[], n: number): (number | null)
 
 const sumOf = (a: (number | null)[]) => a.reduce<number>((t, v) => t + (v ?? 0), 0);
 
+/** GPV plus value adj (GPV+OI) for each day; blank where the GPV is blank. */
+const plusAdj = (g: (number | null)[], adj: (number | null)[]): (number | null)[] =>
+  g.map((v, i) => (v == null ? null : v + (adj[i] ?? 0)));
+
 /** One measure for one day of a row. Basket is sales per bill, in taka. */
 function valueAt(l: Line, m: Measure, i: number): number | null {
-  const s = l.s[i], g = l.g[i], f = l.f ? l.f[i] : null;
+  const s = l.s[i], g = l.g[i], f = l.f ? l.f[i] : null, oi = l.oi[i];
   if (m === "sales") return s;
   if (m === "gpv") return g;
+  if (m === "gpvoi") return oi;
+  if (m === "goi") return s && oi != null ? oi / s : null;
   if (m === "gp") return s && g != null ? g / s : null;
   if (m === "bs") return s != null && f ? s / f : null;
   return f;
@@ -44,9 +54,11 @@ function valueAt(l: Line, m: Measure, i: number): number | null {
 
 /** One measure over every day of a row. */
 function totalAt(l: Line, m: Measure): number | null {
-  const s = sumOf(l.s), g = sumOf(l.g);
+  const s = sumOf(l.s), g = sumOf(l.g), oi = sumOf(l.oi);
   if (m === "sales") return s;
   if (m === "gpv") return g;
+  if (m === "gpvoi") return oi;
+  if (m === "goi") return s ? oi / s : null;
   if (m === "gp") return s ? g / s : null;
   if (m === "bs") return l.f && sumOf(l.f) ? s / sumOf(l.f) : null;
   return l.f ? sumOf(l.f) : null;
@@ -54,9 +66,11 @@ function totalAt(l: Line, m: Measure): number | null {
 
 /** One measure for one day of a row, against the same day last year. */
 function lastAt(l: Line, m: Measure, i: number): number | null {
-  const s = l.sl[i], g = l.gl[i], f = l.fl ? l.fl[i] : null;
+  const s = l.sl[i], g = l.gl[i], f = l.fl ? l.fl[i] : null, oi = l.oil[i];
   if (m === "sales") return s;
   if (m === "gpv") return g;
+  if (m === "gpvoi") return oi;
+  if (m === "goi") return s && oi != null ? oi / s : null;
   if (m === "gp") return s && g != null ? g / s : null;
   if (m === "bs") return s != null && f ? s / f : null;
   return f;
@@ -64,9 +78,11 @@ function lastAt(l: Line, m: Measure, i: number): number | null {
 
 /** One measure over every day of a row, against the same days last year. */
 function totalLastAt(l: Line, m: Measure): number | null {
-  const s = sumOf(l.sl), g = sumOf(l.gl);
+  const s = sumOf(l.sl), g = sumOf(l.gl), oi = sumOf(l.oil);
   if (m === "sales") return s;
   if (m === "gpv") return g;
+  if (m === "gpvoi") return oi;
+  if (m === "goi") return s ? oi / s : null;
   if (m === "gp") return s ? g / s : null;
   if (m === "bs") return l.fl && sumOf(l.fl) ? s / sumOf(l.fl) : null;
   return l.fl ? sumOf(l.fl) : null;
@@ -74,7 +90,7 @@ function totalLastAt(l: Line, m: Measure): number | null {
 
 /** The change of a figure against the same day last year: a growth for money and counts, the difference in points for GP%. */
 function changeOf(m: Measure, n: number | null, l: number | null): { text: string; tone: string } | null {
-  if (m === "gp") {
+  if (m === "gp" || m === "goi") {
     if (n == null || l == null) return null;
     const d = n - l;
     return { text: signedPct(d, 2), tone: toneOfNum(d) };
@@ -96,7 +112,7 @@ function ValueCell({ m, n, l, style }: { m: Measure; n: number | null; l: number
 }
 
 const shown = (v: number | null, m: Measure) =>
-  v == null ? "–" : m === "sales" || m === "gpv" ? crOrDash(v) : m === "gp" ? pct(v, 2) : full(v);
+  v == null ? "–" : m === "sales" || m === "gpv" || m === "gpvoi" ? crOrDash(v) : m === "gp" || m === "goi" ? pct(v, 2) : full(v);
 
 /** The day-by-day table of the heads: a measure selector, one column per day, and a drill from head to person to category.
  *  Footfall is counted for a head, a person under it (crpFf) and a category of that person; a blank means not counted. */
@@ -121,22 +137,28 @@ export default function DayByHead({ heads, totalF, detailRows, crpFf, days, cmpS
   let lines: Line[];
   let total: Line;
   if (level === 0) {
-    lines = heads.map((h) => ({ name: h.head, division: h.division, role: h.role, s: h.sales, g: h.gpv, f: h.ff, sl: h.splySales, gl: h.splyGpv, fl: h.splyFf, drill: true, key: `${h.division}|${h.head}` }));
-    total = { name: "Total (all divisions)", s: totalF.sales, g: totalF.gpv, f: totalF.ff, sl: totalF.splySales, gl: totalF.splyGpv, fl: totalF.splyFf, drill: false, key: "" };
+    lines = heads.map((h) => ({ name: h.head, division: h.division, role: h.role, s: h.sales, g: h.gpv, f: h.ff, sl: h.splySales, gl: h.splyGpv, fl: h.splyFf, oi: plusAdj(h.gpv, h.valueAdj), oil: plusAdj(h.splyGpv, h.splyValueAdj), drill: true, key: `${h.division}|${h.head}` }));
+    total = { name: "Total (all divisions)", s: totalF.sales, g: totalF.gpv, f: totalF.ff, sl: totalF.splySales, gl: totalF.splyGpv, fl: totalF.splyFf,
+      oi: plusAdj(totalF.gpv, totalF.valueAdj), oil: plusAdj(totalF.splyGpv, totalF.splyValueAdj), drill: false, key: "" };
   } else if (level === 1 && headOf) {
     const byCrp = new Map<string, DetailRow[]>();
     for (const r of rowsOfHead) byCrp.set(r.crp as string, [...(byCrp.get(r.crp as string) ?? []), r]);
     lines = [...byCrp.entries()]
-      .map(([crp, rs]) => ({ name: crp, s: addDays(rs.map((r) => r.sales), n), g: addDays(rs.map((r) => r.gpv), n), f: ffOfCrp(crp)?.ff ?? null, sl: addDays(rs.map((r) => r.splySales), n), gl: addDays(rs.map((r) => r.splyGpv), n), fl: ffOfCrp(crp)?.splyFf ?? null, drill: true, key: crp, division: headOf.division, role: headOf.role }))
+      .map(([crp, rs]) => ({ name: crp, s: addDays(rs.map((r) => r.sales), n), g: addDays(rs.map((r) => r.gpv), n), f: ffOfCrp(crp)?.ff ?? null, sl: addDays(rs.map((r) => r.splySales), n), gl: addDays(rs.map((r) => r.splyGpv), n), fl: ffOfCrp(crp)?.splyFf ?? null,
+        oi: addDays(rs.map((r) => plusAdj(r.gpv, r.valueAdj)), n), oil: addDays(rs.map((r) => plusAdj(r.splyGpv, r.splyValueAdj)), n),
+        drill: true, key: crp, division: headOf.division, role: headOf.role }))
       .sort((a, b) => sumOf(b.s) - sumOf(a.s));
-    total = { name: "Total", s: headOf.sales, g: headOf.gpv, f: headOf.ff, sl: headOf.splySales, gl: headOf.splyGpv, fl: headOf.splyFf, drill: false, key: "" };
+    total = { name: "Total", s: headOf.sales, g: headOf.gpv, f: headOf.ff, sl: headOf.splySales, gl: headOf.splyGpv, fl: headOf.splyFf,
+      oi: plusAdj(headOf.gpv, headOf.valueAdj), oil: plusAdj(headOf.splyGpv, headOf.splyValueAdj), drill: false, key: "" };
   } else {
     const rs = rowsOfHead.filter((r) => r.crp === crpName);
     lines = rs
-      .map((r) => ({ name: titleCase(r.category as string), s: r.sales, g: r.gpv, f: r.ff, sl: r.splySales, gl: r.splyGpv, fl: r.splyFf, drill: false, key: r.category as string, division: headOf?.division, role: headOf?.role }))
+      .map((r) => ({ name: titleCase(r.category as string), s: r.sales, g: r.gpv, f: r.ff, sl: r.splySales, gl: r.splyGpv, fl: r.splyFf,
+        oi: plusAdj(r.gpv, r.valueAdj), oil: plusAdj(r.splyGpv, r.splyValueAdj), drill: false, key: r.category as string, division: headOf?.division, role: headOf?.role }))
       .sort((a, b) => sumOf(b.s) - sumOf(a.s));
     total = { name: "Total", s: addDays(rs.map((r) => r.sales), n), g: addDays(rs.map((r) => r.gpv), n), f: ffOfCrp(crpName)?.ff ?? null,
-      sl: addDays(rs.map((r) => r.splySales), n), gl: addDays(rs.map((r) => r.splyGpv), n), fl: ffOfCrp(crpName)?.splyFf ?? null, drill: false, key: "" };
+      sl: addDays(rs.map((r) => r.splySales), n), gl: addDays(rs.map((r) => r.splyGpv), n), fl: ffOfCrp(crpName)?.splyFf ?? null,
+      oi: addDays(rs.map((r) => plusAdj(r.gpv, r.valueAdj)), n), oil: addDays(rs.map((r) => plusAdj(r.splyGpv, r.splyValueAdj)), n), drill: false, key: "" };
   }
 
   const activeMeasure = measure;
