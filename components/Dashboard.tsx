@@ -18,7 +18,8 @@ type Tab = "overview" | "heads" | "daily" | "outlets";
 export default function Dashboard({ report, months, daily }: { report: Report; months: MonthOverview[]; daily: DailyData }) {
   const [cmp, setCmp] = useState<Cmp>("sply");
   const [segment, setSegment] = useState<SegmentKey>("all");
-  const [tab, setTab] = useState<Tab>("overview");
+  // the Overview and Category heads tabs are hidden for now, so the page opens on the day-wise tab
+  const [tab, setTab] = useState<Tab>("daily");
   // months are sorted newest first; the latest month is the default
   const [month, setMonth] = useState(months[0]?.month ?? "");
   const monthData = months.find((m) => m.month === month) ?? months[0];
@@ -105,9 +106,7 @@ export default function Dashboard({ report, months, daily }: { report: Report; m
 
       <nav className="tabs" role="tablist">
         {([
-          ["overview", "Overview"],
-          ["heads", "Category heads"],
-          ["daily", "Day wise sales"],
+          ["daily", "Category wise performance"],
           ["outlets", "Outlets & targets"],
         ] as [Tab, string][]).map(([k, label]) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{label}</button>
