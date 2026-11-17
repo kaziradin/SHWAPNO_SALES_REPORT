@@ -15,7 +15,7 @@ const MEASURES: { k: Measure; l: string }[] = [
 ];
 
 /** One row of the table: sales and GPV for each day (in taka), and footfall where it can be counted (null where not). */
-type Line = { name: string; code?: string; s: (number | null)[]; g: (number | null)[]; f: (number | null)[] | null; drill: boolean; key: string };
+type Line = { name: string; division?: string; role?: string; s: (number | null)[]; g: (number | null)[]; f: (number | null)[] | null; drill: boolean; key: string };
 
 /** Adds day arrays together; a day with no value in any of them stays blank. */
 const addDays = (arrs: ((number | null)[] | null)[], n: number): (number | null)[] =>
@@ -76,19 +76,19 @@ export default function DayByHead({ heads, totalF, detailRows, crpFf, days, cmpS
   let lines: Line[];
   let total: Line;
   if (level === 0) {
-    lines = heads.map((h) => ({ name: h.head, code: abbrOf(h.division), s: h.sales, g: h.gpv, f: h.ff, drill: true, key: `${h.division}|${h.head}` }));
+    lines = heads.map((h) => ({ name: h.head, division: h.division, role: h.role, s: h.sales, g: h.gpv, f: h.ff, drill: true, key: `${h.division}|${h.head}` }));
     total = { name: "Total (all divisions)", s: totalF.sales, g: totalF.gpv, f: totalF.ff, drill: false, key: "" };
   } else if (level === 1 && headOf) {
     const byCrp = new Map<string, DetailRow[]>();
     for (const r of rowsOfHead) byCrp.set(r.crp as string, [...(byCrp.get(r.crp as string) ?? []), r]);
     lines = [...byCrp.entries()]
-      .map(([crp, rs]) => ({ name: crp, s: addDays(rs.map((r) => r.sales), n), g: addDays(rs.map((r) => r.gpv), n), f: ffOfCrp(crp)?.ff ?? null, drill: true, key: crp }))
+      .map(([crp, rs]) => ({ name: crp, s: addDays(rs.map((r) => r.sales), n), g: addDays(rs.map((r) => r.gpv), n), f: ffOfCrp(crp)?.ff ?? null, drill: true, key: crp, division: headOf.division, role: headOf.role }))
       .sort((a, b) => sumOf(b.s) - sumOf(a.s));
     total = { name: "Total", s: headOf.sales, g: headOf.gpv, f: headOf.ff, drill: false, key: "" };
   } else {
     const rs = rowsOfHead.filter((r) => r.crp === crpName);
     lines = rs
-      .map((r) => ({ name: titleCase(r.category as string), s: r.sales, g: r.gpv, f: r.ff, drill: false, key: r.category as string }))
+      .map((r) => ({ name: titleCase(r.category as string), s: r.sales, g: r.gpv, f: r.ff, drill: false, key: r.category as string, division: headOf?.division, role: headOf?.role }))
       .sort((a, b) => sumOf(b.s) - sumOf(a.s));
     total = { name: "Total", s: addDays(rs.map((r) => r.sales), n), g: addDays(rs.map((r) => r.gpv), n), f: ffOfCrp(crpName)?.ff ?? null, drill: false, key: "" };
   }
@@ -116,11 +116,13 @@ export default function DayByHead({ heads, totalF, detailRows, crpFf, days, cmpS
       </div>
       <div className="ov-panel ov-table-panel">
         <div className="ov-table-scroll">
-          <table className="ov-table" style={{ fontSize: 12 }}>
+          <table className="ov-table dh">
             <caption>{scope}. Click a head&apos;s › to see its persons, and a person&apos;s › to see their categories.</caption>
             <thead>
               <tr>
-                <th scope="col" className="l">{firstCol}</th>
+                <th scope="col" className="l dh-c1" title="Division">Div</th>
+                <th scope="col" className="l dh-c2">Category role</th>
+                <th scope="col" className="l dh-c3">{firstCol}</th>
                 {days.map((d) => (
                   <th key={d.date} scope="col" style={{ background: isFriSat(d.date) ? "var(--surface-1)" : undefined }}>
                     {dayMonth(d.date)}
@@ -133,8 +135,9 @@ export default function DayByHead({ heads, totalF, detailRows, crpFf, days, cmpS
             <tbody>
               {lines.map((l) => (
                 <tr key={l.key}>
-                  <td className="l">
-                    {l.code && <span style={{ color: "var(--ov-ink2)", fontSize: 11, marginRight: 6 }}>{l.code}</span>}
+                  <td className="l dh-c1" title={l.division}>{l.division ? abbrOf(l.division) : ""}</td>
+                  <td className="l dh-c2">{l.role ?? ""}</td>
+                  <td className="l dh-c3">
                     {l.drill
                       ? <button type="button" className="linkish" onClick={() => (level === 0 ? setHeadKey(l.key) : setCrpName(l.key))}>{l.name} ›</button>
                       : l.name}
@@ -148,7 +151,7 @@ export default function DayByHead({ heads, totalF, detailRows, crpFf, days, cmpS
             </tbody>
             <tfoot>
               <tr>
-                <th scope="row" className="l">{total.name}</th>
+                <th scope="row" colSpan={3} className="l dh-foot">{total.name}</th>
                 {days.map((d, i) => (
                   <td key={d.date} style={{ fontWeight: 500, background: isFriSat(d.date) ? "var(--surface-1)" : undefined }}>{shown(valueAt(total, activeMeasure, i), activeMeasure)}</td>
                 ))}
