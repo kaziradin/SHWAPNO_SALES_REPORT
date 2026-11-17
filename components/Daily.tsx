@@ -3,12 +3,10 @@
 import { Fragment, useEffect, useState } from "react";
 import type { CrpFf, DailyData, DailyDetailData, DailyHead, DayFields, DetailRow, DivFf, StoreKey } from "@/lib/types";
 import { abbrOf, arrowOf, crFmt, crOrDash, crSigned, full, growth, pct, roleName, signedPct, titleCase, toneOfNum } from "@/lib/format";
-import { downloadExcel, ExportButton, type ExportCell, type ExportCol } from "@/lib/export";
 import {
-  Cell, dayFieldsOfRows, dayLong, dayMonth, dayWeekday, difference, diffChg, Figures, growthChg, isFriSat, Ratios, ratiosOf,
+  dayFieldsOfRows, dayLong, dayMonth, dayWeekday, difference, Figures, isFriSat, Ratios, ratiosOf,
   CMP_SHORT, CMP_WORD, Cmp, headlessWithin, SHOWN_DIVISIONS, STORE_LABEL, storeKey, StoreGroup, StoreType, sumFigures, uniqSorted,
 } from "@/lib/daily";
-import DailyDetail from "./DailyDetail";
 import DayLines, { type DayPoint } from "./DayLines";
 import DayHeads, { DayHeadDrill, type DayCrpRow, type DayHeadRow } from "./DayHeads";
 import DayByHead from "./DayByHead";
@@ -297,8 +295,6 @@ export default function Daily({ daily }: { daily: DailyData }) {
     .sort((a, b) => SHOWN_DIVISIONS.indexOf(a.division) - SHOWN_DIVISIONS.indexOf(b.division) || a.head.localeCompare(b.head));
   const headTotalLabel = headSel ? "Total (selected head)" : fromRows ? "Total (filtered rows)" : "Total (all divisions)";
   const drillRow = headTable.find((h) => `${h.division}|${h.head}` === openHead);
-  const toggleFocus = (date: string) => setFocus((f) => (f === date ? "" : date));
-  const colClass = (date: string) => [isFriSat(date) ? "wk" : "", date === focus ? "sel" : ""].filter(Boolean).join(" ") || undefined;
 
   const moneyDelta = (n: number | null, l: number | null) => {
     const gr = growth(n, l), d = difference(n, l);
@@ -332,8 +328,6 @@ export default function Daily({ daily }: { daily: DailyData }) {
       ...(ffShown ? growthDelta(shownX.bs, shownX.splyBs) : { delta: "", t: "flat" }) },
   ];
 
-  const shown = (m: Metric, v: number | null) => (m.kind === "ratio" ? pct(v, 2) : m.crore ? crOrDash(v) : full(v));
-  const changeOf = (m: Metric, n: number | null, p: number | null) => (m.kind === "ratio" ? diffChg(n, p) : growthChg(n, p));
 
   // the same layout as the table: a column per chosen day, a Total column when there is more than one day
   // the filters are at their defaults: all stores, own and franchise, all divisions and heads, the latest period, vs SPLY
@@ -350,29 +344,6 @@ export default function Daily({ daily }: { daily: DailyData }) {
     setFocus("");
     setOpenHead("");
     setCmp("sply");
-  };
-  const exportDays = () => {
-    const cols: ExportCol[] = [
-      { header: "Measure", format: "text" }, { header: "Row", format: "text" },
-      ...chosen.map((r) => ({ header: dayMonth(r.date), format: "money" as const })),
-      ...(withTotal ? [{ header: `Total (${chosen.length} days)`, format: "money" as const }] : []),
-    ];
-    const all = [...chosen.map((r) => ({ f: r.f, x: r.x })), ...(withTotal ? [{ f: total, x: totalX }] : [])];
-    const body: ExportCell[][] = [
-      ["Day", "", ...chosen.map((r) => dayWeekday(r.date)), ...(withTotal ? [""] : [])],
-      ["Compared with", `Same day ${CMP_WORD[cmp]}`, ...chosen.map((r) => dayLong(r.prev)), ...(withTotal ? [""] : [])],
-    ];
-    const formats: ExportCol["format"][] = ["text", "text"];
-    for (const m of metrics) {
-      body.push([m.label, "This month", ...all.map(({ f, x }) => m.now(f, x))]);
-      body.push([m.label, `Same day ${CMP_WORD[cmp]}`, ...all.map(({ f, x }) => m.prev(f, x))]);
-      body.push([
-        m.label, m.kind === "ratio" ? "Change" : "Growth",
-        ...all.map(({ f, x }) => (m.kind === "ratio" ? difference(m.now(f, x), m.prev(f, x)) : growth(m.now(f, x), m.prev(f, x)))),
-      ]);
-      formats.push(m.format, m.format, "pct");
-    }
-    downloadExcel(`day-wise-sales-${STORE_LABEL[group].toLowerCase().replace(/ /g, "-")}.xlsx`, "Day wise sales", cols, body, formats);
   };
 
   return (
@@ -543,50 +514,6 @@ export default function Daily({ daily }: { daily: DailyData }) {
         detailRows={detailRows(group) ?? []} crpFf={personFf(group)} days={daily.days} cmpShort={CMP_SHORT[cmp]}
         scope={`${STORE_LABEL[group].toLowerCase()}, each day of ${daily.periodLabel}, vs ${CMP_SHORT[cmp]}`} />
 
-      <div className="ov-section-head"><h2>Day by day</h2></div>
-      <div className="xbar"><ExportButton onClick={exportDays} /></div>
-      <div className="ov-panel ov-table-panel">
-        <div className="ov-table-scroll">
-          <table className="ov-table day-wide">
-            <caption>
-              {selectionLabel}, {STORE_LABEL[group].toLowerCase()}, {periodName}. {`Each day against the same day ${CMP_WORD[cmp]}.`}
-              Click a day or any number in its column to show that day in the KPIs and charts; click it again to go back.
-              Friday and Saturday are shaded.
-            </caption>
-            <thead>
-              <tr>
-                <th scope="col">Measure</th>
-                {chosen.map((r) => (
-                  <th key={r.date} scope="col" className={colClass(r.date)} title={`Compared with ${dayLong(r.prev)}`}>
-                    <button type="button" className="daypick" onClick={() => toggleFocus(r.date)} aria-pressed={focus === r.date}>
-                      {dayMonth(r.date)}
-                      <span className="sub" style={{ display: "block" }}>{dayWeekday(r.date)}</span>
-                    </button>
-                  </th>
-                ))}
-                {withTotal && <th scope="col">Total ({chosen.length} days)</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {metrics.map((m) => (
-                <tr key={m.label}>
-                  <th scope="row">{m.label}</th>
-                  {chosen.map((r) => (
-                    <Cell key={r.date} cls={colClass(r.date)} value={shown(m, m.now(r.f, r.x))}
-                      chg={changeOf(m, m.now(r.f, r.x), m.prev(r.f, r.x))} onClick={() => toggleFocus(r.date)} />
-                  ))}
-                  {withTotal && (
-                    <Cell value={shown(m, m.now(total, totalX))} chg={changeOf(m, m.now(total, totalX), m.prev(total, totalX))} />
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <DailyDetail daily={daily} group={group} cmp={cmp} detail={detail} chosen={chosenIdx} label={periodName} compare={compareName}
-        head={headSel} crp={crpSel} cat={catSel} />
       </div>
     </div>
   );
