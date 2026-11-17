@@ -85,20 +85,24 @@ export type DetailRow = Pick<DayFields, "sales" | "splySales" | "gpv" | "splyGpv
   division: string; category: string | null; head: string | null; crp: string | null;
 };
 
-/** One outlet's figures for a period: sales and GPV in taka, and footfall in bills. */
-export type StoreFigures = { sales: number; gpv: number; ff: number };
+/** One outlet's sales and GPV in taka, and footfall in bills, on one day: [sales, GPV, footfall]. */
+export type StoreDay = [number, number, number];
 
 /** One outlet on the Store wise performance tab. Its location details come from the zonal file; its own or franchise status
- *  and its same-store flags come from Outlet_DV. this = this month, sply = same days last year, splm = same days last month. */
+ *  and its same-store flags come from Outlet_DV. daily has one entry per day of StoresData.days: this month (this), the
+ *  same days last year (sply) and the same days last month (splm). */
 export type StoreRow = {
   code: string; name: string; division: string; format: string; leader: string; zonal: string; regional: string; district: string;
   inZonal: boolean; status: "Own" | "Franchise" | "Unknown"; sameSply: boolean; sameSplm: boolean;
-  this: StoreFigures; sply: StoreFigures; splm: StoreFigures;
+  daily: Record<"this" | "sply" | "splm", StoreDay[]>;
 };
 
 export type StoresData = {
   generatedAt: string; asOf: string; periodLabel: string; zonalFile: string;
-  outletFiles: Record<string, string>; outlets: StoreRow[];
+  outletFiles: Record<string, string>;
+  /** The days of the month, each with the day it is compared with last year and last month (as in data/daily.json). */
+  days: { date: string; sply: string; splm: string }[];
+  outlets: StoreRow[];
 };
 
 /** A data group on the Day wise sales tab: all stores, same stores, and their own and franchise stores. */

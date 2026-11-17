@@ -131,22 +131,28 @@ def main():
     sply = read_outlet_file(kinds["SPLY"])
     splm = read_outlet_file(kinds["SPLM"])
 
-    # the days of the dashboard: this month's days, and the matching days last year and last month
-    per = {"this": defaultdict(lambda: {"sales": 0.0, "gpv": 0.0, "ff": 0.0}),
-           "sply": defaultdict(lambda: {"sales": 0.0, "gpv": 0.0, "ff": 0.0}),
-           "splm": defaultdict(lambda: {"sales": 0.0, "gpv": 0.0, "ff": 0.0})}
+    # the days of the dashboard: this month's days, and the matching days last year and last month. Each outlet gets one
+    # [sales, GPV, footfall] per day, so the Store wise tab can total any From-To range of the month.
+    n = len(days)
+    periods = {"this": "date", "sply": "sply", "splm": "splm"}
+    day_index = {p: defaultdict(list) for p in periods}
+    for i, d in enumerate(days):
+        for p, key in periods.items():
+            day_index[p][d[key][:10]].append(i)
+    per = {p: defaultdict(lambda: [[0.0, 0.0, 0.0] for _ in range(n)]) for p in periods}
     names = {}
-    for d in days:
-        for period, src, date in (("this", this, d["date"][:10]), ("sply", sply, d["sply"][:10]), ("splm", splm, d["splm"][:10])):
-            for (day, code), v in src.items():
-                if day != date:
-                    continue
-                acc = per[period][code]
-                acc["sales"] += v["sales"]; acc["gpv"] += v["gpv"]; acc["ff"] += v["ff"]
-                if v["name"]:
-                    names.setdefault(code, v["name"])
+    for p, src in (("this", this), ("sply", sply), ("splm", splm)):
+        for (day, code), v in src.items():
+            idx = day_index[p].get(day)
+            if not idx:
+                continue
+            for i in idx:
+                acc = per[p][code][i]
+                acc[0] += v["sales"]; acc[1] += v["gpv"]; acc[2] += v["ff"]
+            if v["name"]:
+                names.setdefault(code, v["name"])
 
-    codes = set(zonal) | {c for c, v in per["this"].items() if v["sales"]} | {c for c, v in per["sply"].items() if v["sales"]} | {c for c, v in per["splm"].items() if v["sales"]}
+    codes = set(zonal) | {c for p in periods for c, rows_ in per[p].items() if any(r[0] for r in rows_)}
 
     def status_of(code):
         if code in dv.get("SPLY SAME OWN", set()) | dv.get("SPLY NEW OWN", set()):
@@ -158,9 +164,6 @@ def main():
         if code in dv.get("SPLM SAME FRAN", set()) | dv.get("SPLM NEW FRAN", set()):
             return "Franchise"
         return "Unknown"
-
-    def money(v):
-        return round(v, 2)
 
     outlets = []
     for code in sorted(codes):
@@ -178,8 +181,7 @@ def main():
             "status": status_of(code),
             "sameSply": code in dv.get("SPLY SAME STORE", set()),
             "sameSplm": code in dv.get("SPLM SAME STORE", set()),
-            **{p: {"sales": money(per[p][code]["sales"]), "gpv": money(per[p][code]["gpv"]), "ff": round(per[p][code]["ff"])}
-               for p in ("this", "sply", "splm")},
+            "daily": {p: [[round(s), round(g), round(f)] for s, g, f in per[p][code]] for p in periods},
         })
 
     # the outlet totals against the dashboard's day totals (small gaps are expected: the outlet files are a separate export)
@@ -187,7 +189,7 @@ def main():
     for p, key in (("this", "sales"), ("sply", "splySales"), ("splm", "splySales")):
         if p == "splm":
             t = daily["splmGroups"]["all"]["total"]
-        outlet_total = sum(o[p]["sales"] for o in outlets)
+        outlet_total = sum(day[0] for o in outlets for day in o["daily"][p])
         day_total = sum(v or 0 for v in t[key])
         print(f"{p}: outlets {outlet_total:,.0f} vs dashboard {day_total:,.0f} ({(outlet_total / day_total - 1) * 100:+.3f}%)")
 
@@ -197,6 +199,7 @@ def main():
         "periodLabel": daily["periodLabel"],
         "zonalFile": zonal_file.name,
         "outletFiles": {k: f.name for k, f in kinds.items()},
+        "days": [{"date": d["date"][:10], "sply": d["sply"][:10], "splm": d["splm"][:10]} for d in days],
         "outlets": outlets,
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
