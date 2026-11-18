@@ -13,7 +13,7 @@ const markedDay = (iso: string) => [4, 5, 6].includes(new Date(`${iso}T00:00:00`
 /** One line per series, one point per day: this month (navy) against the same day last year (grey).
  *  Money is in crore, ratios in percent, counts (footfall, basket) as whole numbers. Move the pointer anywhere over the chart
  *  to read that day's figures. */
-export default function DayLines({ title, kind, points, total, band, totalLabel = "Month to date", prevWord = "last year" }: {
+export default function DayLines({ title, kind, points: rawPoints, total: rawTotal, band, totalLabel = "Month to date", prevWord = "last year", growthMode = false }: {
   title: string; kind: "money" | "pct" | "count"; points: DayPoint[]; total: { now: number | null; prev: number | null };
   /** The days chosen in the Period list (one day or a date range), marked with a band. */
   band?: { from: string; to: string };
@@ -21,6 +21,8 @@ export default function DayLines({ title, kind, points, total, band, totalLabel 
   totalLabel?: string;
   /** The comparison period in words: "last year" or "last month". */
   prevWord?: string;
+  /** Growth mode: each day's change against the comparison (GR%), drawn against a line at 0%, which is the comparison itself. */
+  growthMode?: boolean;
 }) {
   const { show, hide, node } = useTooltip();
   const { ref, w } = useWidth(560);
@@ -29,8 +31,14 @@ export default function DayLines({ title, kind, points, total, band, totalLabel 
   // the comparison's short name for the charts: SPLY (same period last year) or SPLM (same period last month)
   const short = prevWord === "last month" ? "SPLM" : "SPLY";
   const longName = prevWord === "last month" ? "same period last month" : "same period last year";
+  // growth mode: each day's change against the comparison (GR%), with a line at 0% for the comparison itself
+  const points: DayPoint[] = growthMode
+    ? rawPoints.map((p) => ({ ...p, now: growth(p.now, p.prev) ?? null, prev: p.prev == null ? null : 0 }))
+    : rawPoints;
+  const total = growthMode ? { now: growth(rawTotal.now, rawTotal.prev) ?? null, prev: 0 } : rawTotal;
+  const valueFmt = (v: number) => (kind === "money" ? crFmt(v) : kind === "count" ? full(v) : pct(v, 2));
   const H = 240, top = 14, bottom = 26, left = 66, right = 14;
-  const fmt = (v: number) => (kind === "money" ? crFmt(v) : kind === "count" ? full(v) : pct(v, 2));
+  const fmt = (v: number) => (growthMode ? signedPct(v, 2) : valueFmt(v));
   const values = points.flatMap((p) => [p.now, p.prev]).filter((v): v is number => v != null);
   const lo0 = values.length ? Math.min(...values) : 0;
   const hi0 = values.length ? Math.max(...values) : 1;
@@ -68,7 +76,7 @@ export default function DayLines({ title, kind, points, total, band, totalLabel 
   }
   for (const i of order) {
     const p = points[i];
-    if (p.prev == null) continue;
+    if (p.prev == null || growthMode) continue;
     const text = fmt(p.prev), cy = nowAbove[i] ? y(p.prev) + 14 : y(p.prev) - 8;
     if (fits(text, x(i), cy, 10)) valueLabels.push({ key: `p${i}`, x: x(i), y: cy, text, now: false });
   }
@@ -81,6 +89,14 @@ export default function DayLines({ title, kind, points, total, band, totalLabel 
     return Math.min(n - 1, Math.max(0, Math.floor((px / plotW) * n)));
   };
   const tipFor = (i: number): TipRow[] => {
+    if (growthMode) {
+      const r = rawPoints[i];
+      return [
+        ["This day", r.now == null ? "–" : valueFmt(r.now)],
+        [short, r.prev == null ? "–" : valueFmt(r.prev)],
+        ["GR%", signedPct(growth(r.now, r.prev), 2)],
+      ];
+    }
     const p = points[i];
     const d = difference(p.now, p.prev);
     const rows: TipRow[] = [
@@ -111,12 +127,27 @@ export default function DayLines({ title, kind, points, total, band, totalLabel 
       <h3>{title}</h3>
       <div className="day-sum">
         <span>
-          {totalLabel} <b>{valueText(total.now)}</b> · {short} <b>{valueText(total.prev)}</b> ·{" "}
-          <span className={`delta ${toneOfNum(change)}`}>{signedPct(change, 2)}</span>
+          {growthMode ? (
+            <>{totalLabel} · GR% vs {short} <b>{valueText(total.now)}</b></>
+          ) : (
+            <>
+              {totalLabel} <b>{valueText(total.now)}</b> · {short} <b>{valueText(total.prev)}</b> ·{" "}
+              <span className={`delta ${toneOfNum(change)}`}>{signedPct(change, 2)}</span>
+            </>
+          )}
         </span>
         <span className="day-legend">
-          <span><i className="sw sw-this" />This month</span>
-          <span><i className="sw sw-last" />{short} ({longName})</span>
+          {growthMode ? (
+            <>
+              <span><i className="sw sw-this" />GR% vs {short}</span>
+              <span><i className="sw sw-last" />0% = {short} level</span>
+            </>
+          ) : (
+            <>
+              <span><i className="sw sw-this" />This month</span>
+              <span><i className="sw sw-last" />{short} ({longName})</span>
+            </>
+          )}
         </span>
       </div>
       <div ref={ref}>
