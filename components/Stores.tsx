@@ -368,12 +368,8 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
                 <tr>
                   <th scope="col" className="l st-c1">Code</th>
                   <th scope="col" className="l st-c2">Outlet</th>
-                  <th scope="col" className="l">Division</th>
-                  <th scope="col" className="l">Format</th>
+                  <th scope="col" className="l">Area</th>
                   <th scope="col" className="l">Status</th>
-                  <th scope="col" className="l">Leader</th>
-                  <th scope="col" className="l">Zonal</th>
-                  <th scope="col" className="l">Same store</th>
                   <th scope="col" className={`${TINT.Sales} grp-start`}>Sales this</th>
                   <th scope="col" className={TINT.Sales}>Sales {short}</th>
                   <th scope="col" className={TINT.Sales}>GR%</th>
@@ -415,11 +411,7 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
                       <td className="l st-c1">{r.code}</td>
                       <td className="l st-c2" title={r.name}>{r.name}</td>
                       <td className="l">{r.division ? titleCase(r.division) : "–"}</td>
-                      <td className="l">{r.format || "–"}</td>
                       <td className="l">{r.status}</td>
-                      <td className="l">{r.leader || "–"}</td>
-                      <td className="l">{r.zonal || "–"}</td>
-                      <td className="l">{(cmp === "sply" ? r.sameSply : r.sameSplm) ? "Yes" : "No"}</td>
                       <Metric now={now.sales} last={last.sales} kind="money" tint={TINT.Sales} label="Sales" />
                       <Metric now={now.gpv} last={last.gpv} kind="money" tint={TINT.GPV} label="GPV" />
                       <Metric now={goNow} last={goLast} kind="money" tint={TINT["GPV+OI"]} label="GPV+OI" />
@@ -438,7 +430,7 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
               {rows.length > 0 && (
                 <tfoot>
                   <tr>
-                    <th scope="row" colSpan={8} className="l">Total · {rows.length} {rows.length === 1 ? "outlet" : "outlets"}</th>
+                    <th scope="row" colSpan={4} className="l">Total · {rows.length} {rows.length === 1 ? "outlet" : "outlets"}</th>
                     <Metric now={s} last={sl} kind="money" tint={TINT.Sales} label="Sales" />
                     <Metric now={g} last={gl} kind="money" tint={TINT.GPV} label="GPV" />
                     <Metric now={go} last={gol} kind="money" tint={TINT["GPV+OI"]} label="GPV+OI" />
