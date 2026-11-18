@@ -541,6 +541,7 @@ td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .drill-scroll { max-height: 60vh; margin-top: 10px; }
 .ov-table.drill-table { font-size: 12px; }
 .ov-table.drill-table th, .ov-table.drill-table td { padding: 5px 8px; }
+.ov-table.drill-table th.l, .ov-table.drill-table td.l { text-align: left; }
 .day-rows-table tfoot td.tint-green { background: #D9EFE1; }
 .day-rows-table tfoot td.tint-amber { background: #F6E6C8; }
 .day-rows-table tfoot td.tint-grey { background: #E3E8EF; }
