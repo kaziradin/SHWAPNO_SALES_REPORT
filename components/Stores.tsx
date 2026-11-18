@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { StoreDay, StoresData } from "@/lib/types";
+import type { StoresData } from "@/lib/types";
 import { arrowOf, crOrDash, full, growth, pct, signedPct, titleCase, toneOfNum } from "@/lib/format";
 import { CMP_SHORT, CMP_WORD, type Cmp, dayLong, type StoreGroup, type StoreType, uniqSorted } from "@/lib/daily";
 
 type Kind = "money" | "count" | "ratio";
 
-/** One KPI card: the figure, its change against the comparison, and two lines (the comparison, and the target with ACH). */
+/** One KPI card: the figure, its change against the comparison, and two lines (the comparison, and the target or the OI). */
 type Card = { label: string; value: string; change: number | null; ratio: boolean; line1: string; line2: string };
 
 /** The filter labels, as on the Category wise performance tab. */
@@ -15,23 +15,30 @@ const STORE_GROUP_LABEL: Record<StoreGroup, string> = { all: "All stores", same:
 const TYPE_LABEL: Record<StoreType, string> = { all: "Own and franchise", own: "Own stores", fran: "Franchise stores" };
 
 /** The tint of each measure's columns, as on the other day-wise tables. */
-const TINT: Record<string, string> = { Sales: "tint-blue", GPV: "tint-green", "GP%": "tint-amber", Footfall: "tint-grey", Basket: "tint-grey" };
+const TINT: Record<string, string> = {
+  Sales: "tint-blue", GPV: "tint-green", "GPV+OI": "tint-green", "GP%": "tint-amber", "GP+OI%": "tint-amber",
+  Footfall: "tint-grey", Basket: "tint-grey",
+};
 
-/** One outlet's sales, GPV and footfall over the chosen days, for one period. */
-type Sum = { sales: number; gpv: number; ff: number };
+/** One outlet's sales, GPV, footfall and value adj (OI) over the chosen days, for one period. */
+type Sum = { sales: number; gpv: number; ff: number; va: number };
 
-const sumDays = (days: StoreDay[], idx: number[]): Sum => {
-  const t: Sum = { sales: 0, gpv: 0, ff: 0 };
+/** Sums the chosen days. A day is [sales, GPV, footfall] and, for the actuals, value adj (OI) as the fourth figure. */
+const sumDays = (days: number[][], idx: number[]): Sum => {
+  const t: Sum = { sales: 0, gpv: 0, ff: 0, va: 0 };
   for (const i of idx) {
     const d = days[i];
     t.sales += d[0]; t.gpv += d[1]; t.ff += d[2];
+    t.va += d.length > 3 ? d[3] : 0;
   }
   return t;
 };
 
-const addSums = (rows: Sum[]): Sum => rows.reduce<Sum>((t, r) => ({ sales: t.sales + r.sales, gpv: t.gpv + r.gpv, ff: t.ff + r.ff }), { sales: 0, gpv: 0, ff: 0 });
+const addSums = (rows: Sum[]): Sum =>
+  rows.reduce<Sum>((t, r) => ({ sales: t.sales + r.sales, gpv: t.gpv + r.gpv, ff: t.ff + r.ff, va: t.va + r.va }),
+    { sales: 0, gpv: 0, ff: 0, va: 0 });
 
-/** One measure's three cells: this period, the comparison, and the change (a growth for money and counts, points for GP%). */
+/** One measure's three cells: this period, the comparison, and the change (a growth for money and counts, points for ratios). */
 function Metric({ now, last, kind, tint, label }: { now: number | null; last: number | null; kind: Kind; tint: string; label: string }) {
   const show = (v: number | null) => (v == null ? "–" : kind === "money" ? crOrDash(v) : kind === "count" ? full(v) : pct(v, 2));
   const change = kind === "ratio" ? (now != null && last != null ? now - last : null) : growth(now, last);
@@ -121,7 +128,10 @@ function StoreTable({ data }: { data: StoresData }) {
   const s = total.sales, sl = totalLast.sales;
   const g = total.gpv, gl = totalLast.gpv;
   const f = total.ff, fl = totalLast.ff;
+  // GPV+OI is GPV plus value adj (OI); GP+OI% is GPV+OI over sales
+  const go = g + total.va, gol = gl + totalLast.va;
   const gp = s ? g / s : null, gpl = sl ? gl / sl : null;
+  const goi = s ? go / s : null, goil = sl ? gol / sl : null;
   const bs = f ? s / f : null, bsl = fl ? sl / fl : null;
   // the targets of the outlets shown that have one; achievement is their sales against those targets, so both cover the same outlets
   const tgtRows = rows.flatMap((x) => (x.tgt ? [{ now: x.now, tgt: x.tgt }] : []));
@@ -156,9 +166,15 @@ function StoreTable({ data }: { data: StoresData }) {
     { label: "GPV", value: crOrDash(g), change: growth(g, gl), ratio: false,
       line1: `SPLY ${crOrDash(gl)} · diff ${diffMoney(g - gl)}`,
       line2: tg != null ? `TGT ${crOrDash(tg)} · ACH ${pct(achGpvPct, 2)}` : noTargetText },
+    { label: "GPV+OI", value: crOrDash(go), change: growth(go, gol), ratio: false,
+      line1: `SPLY ${crOrDash(gol)} · diff ${diffMoney(go - gol)}`,
+      line2: `OI ${crOrDash(total.va)}` },
     { label: "GP%", value: pct(gp, 2), change: gp != null && gpl != null ? gp - gpl : null, ratio: true,
       line1: `SPLY ${pct(gpl, 2)}`,
       line2: tgpPct != null ? `TGT ${pct(tgpPct, 2)} · diff ${signedPct(achGpPct != null ? achGpPct - tgpPct : null, 2)}` : noTargetText },
+    { label: "GP+OI%", value: pct(goi, 2), change: goi != null && goil != null ? goi - goil : null, ratio: true,
+      line1: `SPLY ${pct(goil, 2)}`,
+      line2: `GP% ${pct(gp, 2)} · OI adds ${signedPct(goi != null && gp != null ? goi - gp : null, 2)}` },
     { label: "Footfall", value: kFmt(f), change: growth(f, fl), ratio: false,
       line1: `SPLY ${kFmt(fl)} · diff ${diffCount(f - fl)}`,
       line2: tf != null ? `TGT ${kFmt(tf)} · ACH ${pct(achFfPct, 2)}` : noTargetText },
@@ -232,7 +248,7 @@ function StoreTable({ data }: { data: StoresData }) {
       </aside>
 
       <div className="day-main">
-        <section className="ov-kpis five" aria-label="Store wise key figures">
+        <section className="ov-kpis seven" aria-label="Store wise key figures">
           {cards.map((c) => {
             const tone = toneOfNum(c.change);
             const text = c.change == null ? "–" : c.ratio ? signedPct(c.change, 2) : `${arrowOf(tone)}${signedPct(c.change, 2)}`;
@@ -274,9 +290,15 @@ function StoreTable({ data }: { data: StoresData }) {
                   <th scope="col" className={`${TINT.GPV} grp-start`}>GPV this</th>
                   <th scope="col" className={TINT.GPV}>GPV {short}</th>
                   <th scope="col" className={TINT.GPV}>GR%</th>
+                  <th scope="col" className={`${TINT["GPV+OI"]} grp-start`}>GPV+OI this</th>
+                  <th scope="col" className={TINT["GPV+OI"]}>GPV+OI {short}</th>
+                  <th scope="col" className={TINT["GPV+OI"]}>GR%</th>
                   <th scope="col" className={`${TINT["GP%"]} grp-start`}>GP% this</th>
                   <th scope="col" className={TINT["GP%"]}>GP% {short}</th>
                   <th scope="col" className={TINT["GP%"]}>Diff</th>
+                  <th scope="col" className={`${TINT["GP+OI%"]} grp-start`}>GP+OI% this</th>
+                  <th scope="col" className={TINT["GP+OI%"]}>GP+OI% {short}</th>
+                  <th scope="col" className={TINT["GP+OI%"]}>Diff</th>
                   <th scope="col" className={`${TINT.Footfall} grp-start`}>Footfall this</th>
                   <th scope="col" className={TINT.Footfall}>Footfall {short}</th>
                   <th scope="col" className={TINT.Footfall}>GR%</th>
@@ -293,6 +315,9 @@ function StoreTable({ data }: { data: StoresData }) {
                 {rows.map(({ r, now, last, tgt }) => {
                   const gpNow = now.sales ? now.gpv / now.sales : null;
                   const gpLast = last.sales ? last.gpv / last.sales : null;
+                  const goNow = now.gpv + now.va, goLast = last.gpv + last.va;
+                  const goiNow = now.sales ? goNow / now.sales : null;
+                  const goiLast = last.sales ? goLast / last.sales : null;
                   const basketNow = now.ff ? now.sales / now.ff : null;
                   const basketLast = last.ff ? last.sales / last.ff : null;
                   return (
@@ -307,7 +332,9 @@ function StoreTable({ data }: { data: StoresData }) {
                       <td className="l">{(cmp === "sply" ? r.sameSply : r.sameSplm) ? "Yes" : "No"}</td>
                       <Metric now={now.sales} last={last.sales} kind="money" tint={TINT.Sales} label="Sales" />
                       <Metric now={now.gpv} last={last.gpv} kind="money" tint={TINT.GPV} label="GPV" />
+                      <Metric now={goNow} last={goLast} kind="money" tint={TINT["GPV+OI"]} label="GPV+OI" />
                       <Metric now={gpNow} last={gpLast} kind="ratio" tint={TINT["GP%"]} label="GP%" />
+                      <Metric now={goiNow} last={goiLast} kind="ratio" tint={TINT["GP+OI%"]} label="GP+OI%" />
                       <Metric now={now.ff} last={last.ff} kind="count" tint={TINT.Footfall} label="Footfall" />
                       <Metric now={basketNow} last={basketLast} kind="count" tint={TINT.Basket} label="Basket" />
                       <TargetCell v={tgt ? tgt.sales : null} kind="money" tint={TINT.Sales} start />
@@ -324,7 +351,9 @@ function StoreTable({ data }: { data: StoresData }) {
                     <th scope="row" colSpan={8} className="l">Total · {rows.length} {rows.length === 1 ? "outlet" : "outlets"}</th>
                     <Metric now={s} last={sl} kind="money" tint={TINT.Sales} label="Sales" />
                     <Metric now={g} last={gl} kind="money" tint={TINT.GPV} label="GPV" />
+                    <Metric now={go} last={gol} kind="money" tint={TINT["GPV+OI"]} label="GPV+OI" />
                     <Metric now={gp} last={gpl} kind="ratio" tint={TINT["GP%"]} label="GP%" />
+                    <Metric now={goi} last={goil} kind="ratio" tint={TINT["GP+OI%"]} label="GP+OI%" />
                     <Metric now={f} last={fl} kind="count" tint={TINT.Footfall} label="Footfall" />
                     <Metric now={bs} last={bsl} kind="count" tint={TINT.Basket} label="Basket" />
                     <TargetCell v={ts} kind="money" tint={TINT.Sales} start />

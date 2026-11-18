@@ -85,8 +85,12 @@ export type DetailRow = Pick<DayFields, "sales" | "splySales" | "gpv" | "splyGpv
   division: string; category: string | null; head: string | null; crp: string | null;
 };
 
-/** One outlet's sales and GPV in taka, and footfall in bills, on one day: [sales, GPV, footfall]. */
-export type StoreDay = [number, number, number];
+/** One outlet's sales and GPV in taka, footfall in bills, and value adj (OI) in taka, on one day:
+ *  [sales, GPV, footfall, value adj]. GPV+OI is GPV plus value adj. */
+export type StoreDay = [number, number, number, number];
+
+/** One outlet's target on one day: [sales, GPV, footfall] in the same units. */
+export type TargetDay = [number, number, number];
 
 /** One outlet on the Store wise performance tab. Its location details come from the zonal file; its own or franchise status
  *  and its same-store flags come from Outlet_DV. daily has one entry per day of StoresData.days: this month (this), the
@@ -97,7 +101,7 @@ export type StoreRow = {
   daily: Record<"this" | "sply" | "splm", StoreDay[]>;
   /** The outlet's target sales, GPV and footfall for each day of StoresData.days (from the Store wise target file);
    *  null when the target file has no target for the outlet. */
-  target: StoreDay[] | null;
+  target: TargetDay[] | null;
 };
 
 export type StoresData = {

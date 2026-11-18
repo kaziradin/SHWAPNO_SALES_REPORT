@@ -18,6 +18,9 @@ Sources
   columns: sales, GPV, FF and BS targets. Each outlet gets its sales, GPV and footfall target for each day of the data.
   The basket target is sales / footfall, as the workbook's BS block is on every day.
 
+- Day wise value adj (OI) workbooks in the automation folder (Day Wise Val Adj, SPLY and SPLM): the Detail sheet, summed
+  per outlet and day over its article and division rows. Each day holds [sales, GPV, footfall, value adj].
+
 Usage:  python scripts/extract_stores.py
 """
 import csv
@@ -106,6 +109,34 @@ def read_outlet_dv(path):
             continue
         lists[str(name).strip()] = {str(r[j]).strip() for r in rows[1:] if j < len(r) and r[j] not in (None, "")}
     return lists
+
+
+# The day-wise value adj (OI) workbooks, in the automation folder: a Detail sheet with a row per article, outlet and
+# division, and a column per day. Their outlet totals tie to the dashboard's value adj for each period.
+VAL_FOLDER = ROOT.parent.parent / "val adj" / "autmation for day wise val adj"
+VAL_FILES = {"this": "Day Wise Val Adj.xlsx", "sply": "Day Wise Val Adj SPLY.xlsx", "splm": "Day Wise Val Adj SPLM.xlsx"}
+
+
+def read_value_adj(path):
+    """Value adj (OI) of each outlet on each day, summed over the article and division rows of the Detail sheet.
+    The 'Grand Total' row has no outlet and is left out. Returns {(ISO date, outlet code): value}."""
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    try:
+        rows = wb["Detail"].iter_rows(values_only=True)
+        header = next(rows)
+        day_cols = [(j, h.date().isoformat()) for j, h in enumerate(header) if isinstance(h, dt.datetime)]
+        out = defaultdict(float)
+        for r in rows:
+            code = str(cell(r, 1) or "").strip()
+            if not code:
+                continue
+            for j, day in day_cols:
+                v = cell(r, j)
+                if isinstance(v, (int, float)):
+                    out[(day, code)] += v
+    finally:
+        wb.close()
+    return out
 
 
 TARGET_GLOB = "Store wise Target*.xlsx"
@@ -243,7 +274,7 @@ def main():
     for i, d in enumerate(days):
         for p, key in periods.items():
             day_index[p][d[key][:10]].append(i)
-    per = {p: defaultdict(lambda: [[0.0, 0.0, 0.0] for _ in range(n)]) for p in periods}
+    per = {p: defaultdict(lambda: [[0.0, 0.0, 0.0, 0.0] for _ in range(n)]) for p in periods}
     names = {}
     for p, src in (("this", this), ("sply", sply), ("splm", splm)):
         for (day, code), v in src.items():
@@ -255,6 +286,13 @@ def main():
                 acc[0] += v["sales"]; acc[1] += v["gpv"]; acc[2] += v["ff"]
             if v["name"]:
                 names.setdefault(code, v["name"])
+
+    # value adj (OI) of each outlet on each day, from the day-wise workbooks
+    print("Value adj:", ", ".join(VAL_FILES.values()))
+    for p in periods:
+        for (day, code), v in read_value_adj(VAL_FOLDER / VAL_FILES[p]).items():
+            for i in day_index[p].get(day, ()):
+                per[p][code][i][3] += v
 
     codes = set(zonal) | {c for p in periods for c, rows_ in per[p].items() if any(r[0] for r in rows_)}
 
@@ -286,7 +324,7 @@ def main():
             "sameSply": code in dv.get("SPLY SAME STORE", set()),
             "sameSplm": code in dv.get("SPLM SAME STORE", set()),
             "target": day_targets(targets["codes"][code], day_k) if code in targets["codes"] else None,
-            "daily": {p: [[round(s), round(g), round(f)] for s, g, f in per[p][code]] for p in periods},
+            "daily": {p: [[round(s), round(g), round(f), round(a, 2)] for s, g, f, a in per[p][code]] for p in periods},
         })
 
     # the outlet totals against the dashboard's day totals (small gaps are expected: the outlet files are a separate export)
@@ -298,6 +336,13 @@ def main():
         day_total = sum(v or 0 for v in t[key])
         print(f"{p}: outlets {outlet_total:,.0f} vs dashboard {day_total:,.0f} ({(outlet_total / day_total - 1) * 100:+.3f}%)")
 
+    # value adj of the outlets against the dashboard's value adj for each period
+    va_dash = {"this": daily["groups"]["all"]["total"]["valueAdj"], "sply": daily["groups"]["all"]["total"]["splyValueAdj"],
+               "splm": daily["splmGroups"]["all"]["total"]["splyValueAdj"]}
+    for p, dash in va_dash.items():
+        outlet_total = sum(day[3] for o in outlets for day in o["daily"][p])
+        day_total = sum(v or 0 for v in dash)
+        print(f"{p} value adj: outlets {outlet_total:,.0f} vs dashboard {day_total:,.0f} (diff {outlet_total - day_total:,.0f})")
     with_target = sum(1 for o in outlets if o["target"] is not None)
     print(f"targets: {with_target} of {len(outlets)} outlets have a target in {target_file.name}")
     out = {
