@@ -571,15 +571,7 @@ td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .st-pill.up { background: rgba(95, 220, 143, 0.14); color: #5fdc8f; }
 .st-pill.down { background: rgba(255, 138, 128, 0.14); color: #ff8a80; }
 .st-pill.flat { background: rgba(255, 255, 255, 0.08); color: #9fb4cf; }
-.st-kpi .ov-kpi-cmp { font-size: 10.5px; line-height: 1.35; }
-.st-kpi .ov-kpi-label { font-size: 10.5px; letter-spacing: 0.03em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-/* seven cards (Sales, GPV, GPV+OI, GP%, GP+OI%, Footfall, Basket): four across, then three */
-.ov-kpis.seven { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.ov-kpis.seven .ov-kpi { grid-column: auto; }
-@media (max-width: 640px) {
-  .ov-kpis.seven { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .ov-kpis.seven .ov-kpi:last-child { grid-column: 1 / -1; }
-}
+.st-kpi .ov-kpi-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 
 /* Head drill-down: sortable column headings */
 .sortbtn { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: inherit; cursor: pointer; }

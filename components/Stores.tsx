@@ -260,7 +260,7 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
       </aside>
 
       <div className="day-main">
-        <section className="ov-kpis seven" aria-label="Store wise key figures">
+        <section className="ov-kpis day-kpis" aria-label="Store wise key figures">
           {cards.map((c) => {
             const tone = toneOfNum(c.change);
             const text = c.change == null ? "–" : c.ratio ? signedPct(c.change, 2) : `${arrowOf(tone)}${signedPct(c.change, 2)}`;
