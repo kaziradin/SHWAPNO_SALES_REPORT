@@ -522,6 +522,14 @@ td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .stores-table th.st-c2, .stores-table td.st-c2 { position: sticky; left: 66px; z-index: 2; background: #fff; width: 210px; min-width: 210px; max-width: 210px; white-space: normal; box-shadow: 4px 0 6px -4px rgba(15, 39, 68, 0.22); }
 .stores-table thead th.st-c1, .stores-table thead th.st-c2 { background: #F6F8FB; z-index: 4; }
 .stores-table th.l, .stores-table td.l { text-align: left; }
+/* a smaller font and tighter cells, so more of the wide table fits on screen */
+.ov-table.stores-table { font-size: 12px; }
+.ov-table.stores-table th, .ov-table.stores-table td { padding: 5px 8px; }
+/* the column headers sort the table: a plain button, with a ▲ or ▼ on the sorted column */
+.ov-table.stores-table .th-sort { background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; text-align: inherit; cursor: pointer; white-space: nowrap; }
+.ov-table.stores-table .th-sort:hover { text-decoration: underline; }
+.ov-table.stores-table .th-sort:focus-visible { outline: 2px solid #1d4ed8; outline-offset: 2px; }
+.ov-table.stores-table .th-arrow { font-size: 10px; }
 .day-rows-table tfoot td.tint-green { background: #D9EFE1; }
 .day-rows-table tfoot td.tint-amber { background: #F6E6C8; }
 .day-rows-table tfoot td.tint-grey { background: #E3E8EF; }

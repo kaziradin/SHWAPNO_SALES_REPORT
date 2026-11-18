@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { DailyData, StoresData } from "@/lib/types";
+import type { DailyData, StoreRow, StoresData } from "@/lib/types";
 import { arrowOf, crOrDash, full, growth, pct, signedPct, titleCase, toneOfNum } from "@/lib/format";
 import { CMP_SHORT, CMP_WORD, type Cmp, dayLong, storeKey, type StoreGroup, type StoreType, uniqSorted } from "@/lib/daily";
 import DayLines, { type DayPoint } from "./DayLines";
@@ -24,6 +24,9 @@ const TINT: Record<string, string> = {
 /** One outlet's sales, GPV, footfall and value adj (OI) over the chosen days, for one period. */
 type Sum = { sales: number; gpv: number; ff: number; va: number };
 
+/** One outlet in the table: its details, its figures this month and for the comparison, and its target. */
+type Row = { r: StoreRow; now: Sum; last: Sum; tgt: Sum | null };
+
 /** Sums the chosen days. A day is [sales, GPV, footfall] and, for the actuals, value adj (OI) as the fourth figure. */
 const sumDays = (days: number[][], idx: number[]): Sum => {
   const t: Sum = { sales: 0, gpv: 0, ff: 0, va: 0 };
@@ -38,6 +41,39 @@ const sumDays = (days: number[][], idx: number[]): Sum => {
 const addSums = (rows: Sum[]): Sum =>
   rows.reduce<Sum>((t, r) => ({ sales: t.sales + r.sales, gpv: t.gpv + r.gpv, ff: t.ff + r.ff, va: t.va + r.va }),
     { sales: 0, gpv: 0, ff: 0, va: 0 });
+
+/** The figures of one row that the table shows, and that a column sorts by. Each is null where it cannot be worked out. */
+const figuresOf = ({ now, last, tgt }: Row) => {
+  const ratio = (a: number, b: number) => (b ? a / b : null);
+  const diff = (a: number | null, b: number | null) => (a != null && b != null ? a - b : null);
+  const gpNow = ratio(now.gpv, now.sales), gpLast = ratio(last.gpv, last.sales);
+  const goiNow = ratio(now.gpv + now.va, now.sales), goiLast = ratio(last.gpv + last.va, last.sales);
+  const bsNow = ratio(now.sales, now.ff), bsLast = ratio(last.sales, last.ff);
+  return {
+    salesNow: now.sales, salesLast: last.sales, salesGr: growth(now.sales, last.sales),
+    gpvNow: now.gpv, gpvLast: last.gpv, gpvGr: growth(now.gpv, last.gpv),
+    goNow: now.gpv + now.va, goLast: last.gpv + last.va, goGr: growth(now.gpv + now.va, last.gpv + last.va),
+    gpNow, gpLast, gpDiff: diff(gpNow, gpLast),
+    goiNow, goiLast, goiDiff: diff(goiNow, goiLast),
+    ffNow: now.ff, ffLast: last.ff, ffGr: growth(now.ff, last.ff),
+    bsNow, bsLast, bsGr: growth(bsNow, bsLast),
+    tgtSales: tgt ? tgt.sales : null, tgtGpv: tgt ? tgt.gpv : null, tgtFf: tgt ? tgt.ff : null,
+    tgtBs: tgt && tgt.ff ? tgt.sales / tgt.ff : null,
+  };
+};
+type NumKey = keyof ReturnType<typeof figuresOf>;
+type TextKey = "code" | "name" | "division" | "status";
+type SortKey = NumKey | TextKey;
+const TEXT_KEYS: SortKey[] = ["code", "name", "division", "status"];
+
+/** A row's value for one column, for sorting: text for the outlet details, a number for the figures. */
+const sortValueOf = (x: Row, key: SortKey): number | string | null => {
+  if (key === "code") return x.r.code;
+  if (key === "name") return x.r.name;
+  if (key === "division") return x.r.division;
+  if (key === "status") return x.r.status;
+  return figuresOf(x)[key as NumKey];
+};
 
 /** One measure's three cells: this period, the comparison, and the change (a growth for money and counts, points for ratios). */
 function Metric({ now, last, kind, tint, label }: { now: number | null; last: number | null; kind: Kind; tint: string; label: string }) {
@@ -59,7 +95,21 @@ function TargetCell({ v, kind, tint, start }: { v: number | null; kind: "money" 
   return <td className={start ? `${tint} grp-start` : tint}>{text}</td>;
 }
 
-/** The Store wise performance tab: one row per outlet, with its leader, zonal manager, division, format and status.
+/** A column header that sorts the table by its column. Clicking the active column again reverses the order. */
+function SortTh({ k, label, cls, sortKey, dir, onSort }: {
+  k: SortKey; label: string; cls: string; sortKey: SortKey; dir: "asc" | "desc"; onSort: (k: SortKey) => void;
+}) {
+  const active = sortKey === k;
+  return (
+    <th scope="col" className={cls} aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : "none"}>
+      <button type="button" className="th-sort" onClick={() => onSort(k)}>
+        {label}{active && <span className="th-arrow">{dir === "asc" ? " ▲" : " ▼"}</span>}
+      </button>
+    </th>
+  );
+}
+
+/** The Store wise performance tab: one row per outlet, with its area and status.
  *  The filters sit in a panel beside the table, as on the Category wise performance tab. */
 export default function Stores() {
   const [data, setData] = useState<StoresData | null>(null);
@@ -93,6 +143,9 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
   const [leader, setLeader] = useState("");
   const [zonal, setZonal] = useState("");
   const [search, setSearch] = useState("");
+  // the table's sort: the column, and its direction (the default is sales this month, highest first)
+  const [sortKey, setSortKey] = useState<SortKey>("salesNow");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   // the day-wise charts show the values (this month against the comparison), or each day's growth (GR%) against it
   const [view, setView] = useState<"values" | "growth">("values");
   const growthMode = view === "growth";
@@ -131,11 +184,25 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
       .filter((r) => !zonal || r.zonal === zonal)
       .filter((r) => terms.length === 0 || terms.some((t) => r.code.toLowerCase().includes(t) || r.name.toLowerCase().includes(t)));
   }, [outlets, cmp, store, type, division, format, leader, zonal, search]);
-  // the rows: the outlets passing the filters with sales in the chosen days
-  const rows = useMemo(() => passing
+  // the rows: the outlets passing the filters with sales in the chosen days (in the sort order chosen above)
+  const rows: Row[] = useMemo(() => passing
     .map((r) => ({ r, now: sumDays(r.daily.this, chosen), last: sumDays(r.daily[cmp], chosen), tgt: r.target ? sumDays(r.target, chosen) : null }))
-    .filter(({ now, last }) => now.sales > 0 || last.sales > 0)
-    .sort((a, b) => b.now.sales - a.now.sales), [passing, chosen, cmp]);
+    .filter(({ now, last }) => now.sales > 0 || last.sales > 0), [passing, chosen, cmp]);
+  const sortedRows = useMemo(() => [...rows].sort((a, b) => {
+    const va = sortValueOf(a, sortKey), vb = sortValueOf(b, sortKey);
+    // a blank always sorts last, whichever way the column is ordered
+    if (va == null || vb == null) return va == null && vb == null ? 0 : va == null ? 1 : -1;
+    const c = typeof va === "string" ? va.localeCompare(String(vb)) : va - (vb as number);
+    return sortDir === "asc" ? c : -c;
+  }), [rows, sortKey, sortDir]);
+  const onSort = (k: SortKey) => {
+    if (k === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else {
+      setSortKey(k);
+      setSortDir(TEXT_KEYS.includes(k) ? "asc" : "desc");
+    }
+  };
+  const head = { sortKey, dir: sortDir, onSort };
 
   // the totals: with no outlet filter, the Category wise figures of this store group and type (the same totals as that tab);
   // otherwise the sum of the outlets shown
@@ -367,46 +434,40 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
             <table className="ov-table stores-table tinted">
               <thead>
                 <tr>
-                  <th scope="col" className="l st-c1">Code</th>
-                  <th scope="col" className="l st-c2">Outlet</th>
-                  <th scope="col" className="l">Area</th>
-                  <th scope="col" className="l">Status</th>
-                  <th scope="col" className={`${TINT.Sales} grp-start`}>Sales this</th>
-                  <th scope="col" className={TINT.Sales}>Sales {short}</th>
-                  <th scope="col" className={TINT.Sales}>GR%</th>
-                  <th scope="col" className={`${TINT.GPV} grp-start`}>GPV this</th>
-                  <th scope="col" className={TINT.GPV}>GPV {short}</th>
-                  <th scope="col" className={TINT.GPV}>GR%</th>
-                  <th scope="col" className={`${TINT["GPV+OI"]} grp-start`}>GPV+OI this</th>
-                  <th scope="col" className={TINT["GPV+OI"]}>GPV+OI {short}</th>
-                  <th scope="col" className={TINT["GPV+OI"]}>GR%</th>
-                  <th scope="col" className={`${TINT["GP%"]} grp-start`}>GP% this</th>
-                  <th scope="col" className={TINT["GP%"]}>GP% {short}</th>
-                  <th scope="col" className={TINT["GP%"]}>Diff</th>
-                  <th scope="col" className={`${TINT["GP+OI%"]} grp-start`}>GP+OI% this</th>
-                  <th scope="col" className={TINT["GP+OI%"]}>GP+OI% {short}</th>
-                  <th scope="col" className={TINT["GP+OI%"]}>Diff</th>
-                  <th scope="col" className={`${TINT.Footfall} grp-start`}>Footfall this</th>
-                  <th scope="col" className={TINT.Footfall}>Footfall {short}</th>
-                  <th scope="col" className={TINT.Footfall}>GR%</th>
-                  <th scope="col" className={`${TINT.Basket} grp-start`}>Basket this</th>
-                  <th scope="col" className={TINT.Basket}>Basket {short}</th>
-                  <th scope="col" className={TINT.Basket}>GR%</th>
-                  <th scope="col" className={`${TINT.Sales} grp-start`}>Sales TGT</th>
-                  <th scope="col" className={TINT.GPV}>GPV TGT</th>
-                  <th scope="col" className={TINT.Footfall}>FF TGT</th>
-                  <th scope="col" className={TINT.Basket}>BS TGT</th>
+                  <SortTh k="code" label="Code" cls="l st-c1" {...head} />
+                  <SortTh k="name" label="Outlet" cls="l st-c2" {...head} />
+                  <SortTh k="division" label="Area" cls="l" {...head} />
+                  <SortTh k="status" label="Status" cls="l" {...head} />
+                  <SortTh k="salesNow" label="Sales this" cls={`${TINT.Sales} grp-start`} {...head} />
+                  <SortTh k="salesLast" label={`Sales ${short}`} cls={TINT.Sales} {...head} />
+                  <SortTh k="salesGr" label="GR%" cls={TINT.Sales} {...head} />
+                  <SortTh k="gpvNow" label="GPV this" cls={`${TINT.GPV} grp-start`} {...head} />
+                  <SortTh k="gpvLast" label={`GPV ${short}`} cls={TINT.GPV} {...head} />
+                  <SortTh k="gpvGr" label="GR%" cls={TINT.GPV} {...head} />
+                  <SortTh k="goNow" label="GPV+OI this" cls={`${TINT["GPV+OI"]} grp-start`} {...head} />
+                  <SortTh k="goLast" label={`GPV+OI ${short}`} cls={TINT["GPV+OI"]} {...head} />
+                  <SortTh k="goGr" label="GR%" cls={TINT["GPV+OI"]} {...head} />
+                  <SortTh k="gpNow" label="GP% this" cls={`${TINT["GP%"]} grp-start`} {...head} />
+                  <SortTh k="gpLast" label={`GP% ${short}`} cls={TINT["GP%"]} {...head} />
+                  <SortTh k="gpDiff" label="Diff" cls={TINT["GP%"]} {...head} />
+                  <SortTh k="goiNow" label="GP+OI% this" cls={`${TINT["GP+OI%"]} grp-start`} {...head} />
+                  <SortTh k="goiLast" label={`GP+OI% ${short}`} cls={TINT["GP+OI%"]} {...head} />
+                  <SortTh k="goiDiff" label="Diff" cls={TINT["GP+OI%"]} {...head} />
+                  <SortTh k="ffNow" label="Footfall this" cls={`${TINT.Footfall} grp-start`} {...head} />
+                  <SortTh k="ffLast" label={`Footfall ${short}`} cls={TINT.Footfall} {...head} />
+                  <SortTh k="ffGr" label="GR%" cls={TINT.Footfall} {...head} />
+                  <SortTh k="bsNow" label="Basket this" cls={`${TINT.Basket} grp-start`} {...head} />
+                  <SortTh k="bsLast" label={`Basket ${short}`} cls={TINT.Basket} {...head} />
+                  <SortTh k="bsGr" label="GR%" cls={TINT.Basket} {...head} />
+                  <SortTh k="tgtSales" label="Sales TGT" cls={`${TINT.Sales} grp-start`} {...head} />
+                  <SortTh k="tgtGpv" label="GPV TGT" cls={TINT.GPV} {...head} />
+                  <SortTh k="tgtFf" label="FF TGT" cls={TINT.Footfall} {...head} />
+                  <SortTh k="tgtBs" label="BS TGT" cls={TINT.Basket} {...head} />
                 </tr>
               </thead>
               <tbody>
-                {rows.map(({ r, now, last, tgt }) => {
-                  const gpNow = now.sales ? now.gpv / now.sales : null;
-                  const gpLast = last.sales ? last.gpv / last.sales : null;
-                  const goNow = now.gpv + now.va, goLast = last.gpv + last.va;
-                  const goiNow = now.sales ? goNow / now.sales : null;
-                  const goiLast = last.sales ? goLast / last.sales : null;
-                  const basketNow = now.ff ? now.sales / now.ff : null;
-                  const basketLast = last.ff ? last.sales / last.ff : null;
+                {sortedRows.map(({ r, now, last, tgt }) => {
+                  const fg = figuresOf({ r, now, last, tgt });
                   return (
                     <tr key={r.code}>
                       <td className="l st-c1">{r.code}</td>
@@ -415,15 +476,15 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
                       <td className="l">{r.status}</td>
                       <Metric now={now.sales} last={last.sales} kind="money" tint={TINT.Sales} label="Sales" />
                       <Metric now={now.gpv} last={last.gpv} kind="money" tint={TINT.GPV} label="GPV" />
-                      <Metric now={goNow} last={goLast} kind="money" tint={TINT["GPV+OI"]} label="GPV+OI" />
-                      <Metric now={gpNow} last={gpLast} kind="ratio" tint={TINT["GP%"]} label="GP%" />
-                      <Metric now={goiNow} last={goiLast} kind="ratio" tint={TINT["GP+OI%"]} label="GP+OI%" />
+                      <Metric now={fg.goNow} last={fg.goLast} kind="money" tint={TINT["GPV+OI"]} label="GPV+OI" />
+                      <Metric now={fg.gpNow} last={fg.gpLast} kind="ratio" tint={TINT["GP%"]} label="GP%" />
+                      <Metric now={fg.goiNow} last={fg.goiLast} kind="ratio" tint={TINT["GP+OI%"]} label="GP+OI%" />
                       <Metric now={now.ff} last={last.ff} kind="count" tint={TINT.Footfall} label="Footfall" />
-                      <Metric now={basketNow} last={basketLast} kind="count" tint={TINT.Basket} label="Basket" />
+                      <Metric now={fg.bsNow} last={fg.bsLast} kind="count" tint={TINT.Basket} label="Basket" />
                       <TargetCell v={tgt ? tgt.sales : null} kind="money" tint={TINT.Sales} start />
                       <TargetCell v={tgt ? tgt.gpv : null} kind="money" tint={TINT.GPV} />
                       <TargetCell v={tgt ? tgt.ff : null} kind="count" tint={TINT.Footfall} />
-                      <TargetCell v={tgt && tgt.ff ? tgt.sales / tgt.ff : null} kind="count" tint={TINT.Basket} />
+                      <TargetCell v={fg.tgtBs} kind="count" tint={TINT.Basket} />
                     </tr>
                   );
                 })}
