@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { DailyData, OutletCatData, StoreRow, StoresData } from "@/lib/types";
-import { arrowOf, crOrDash, crSigned, full, growth, pct, signedPct, titleCase, toneOfNum } from "@/lib/format";
+import { abbrOf, arrowOf, crOrDash, crSigned, full, growth, pct, signedPct, titleCase, toneOfNum } from "@/lib/format";
 import { CMP_SHORT, CMP_WORD, type Cmp, dayLong, SHOWN_DIVISIONS, storeKey, type StoreGroup, type StoreType, uniqSorted } from "@/lib/daily";
 import DayLines, { type DayPoint } from "./DayLines";
 
@@ -111,8 +111,8 @@ function TargetTriple({ tgt, ach, gap, kind, tint, start }: {
 }
 
 /** A column header that sorts the table by its column. Clicking the active column again reverses the order. */
-function SortTh({ k, label, cls, sortKey, dir, onSort }: {
-  k: SortKey; label: string; cls: string; sortKey: SortKey; dir: "asc" | "desc"; onSort: (k: SortKey) => void;
+function SortTh<K extends string>({ k, label, cls, sortKey, dir, onSort }: {
+  k: K; label: string; cls: string; sortKey: K; dir: "asc" | "desc"; onSort: (k: K) => void;
 }) {
   const active = sortKey === k;
   return (
@@ -123,6 +123,18 @@ function SortTh({ k, label, cls, sortKey, dir, onSort }: {
     </th>
   );
 }
+
+/** The columns of the outlet drill-down that sort it. */
+type DrillKey = "division" | "cat3" | "now" | "last" | "diff" | "growth";
+
+/** The order of the divisions in the drill-down: the six main ones (CG, PC, LC, FP, GM, LS), then every other division. */
+const divisionRank = (division: string) => {
+  const i = SHOWN_DIVISIONS.indexOf(division);
+  return i >= 0 ? i : SHOWN_DIVISIONS.length;
+};
+
+/** A division's label: the code for the six main ones, as on the Category wise sheet, and the name for the others. */
+const divisionLabel = (division: string) => (SHOWN_DIVISIONS.includes(division) ? abbrOf(division) : titleCase(division));
 
 /** The drill-down's division filter: "Others" stands for every division that is not one of the six main ones. */
 const OTHERS = "__others__";
@@ -176,11 +188,39 @@ function OutletDrill({ code, name, data, cmp, short, onClose }: {
   const [cat, setCat] = useState("");
   const hasOthers = useMemo(() => lines.some((l) => !SHOWN_DIVISIONS.includes(l.division)), [lines]);
   const cats = useMemo(() => uniqSorted(lines.filter((l) => inArea(l.division, area)).map((l) => l.cat3)), [lines, area]);
-  // the lines by this month's value of the chosen measure, highest first, then the filters
-  const rows = useMemo(
-    () => [...lines].sort((a, b) => (measureOf(measure, b.now) ?? 0) - (measureOf(measure, a.now) ?? 0)),
-    [lines, measure],
-  );
+  // the columns sort the breakdown. By default the lines run by division (CG, PC, LC, FP, GM, LS, then the others) and,
+  // within a division, by this month's value of the chosen measure, highest first
+  const [dsort, setDsort] = useState<DrillKey>("division");
+  const [ddir, setDdir] = useState<"asc" | "desc">("asc");
+  const onDrillSort = (k: DrillKey) => {
+    if (k === dsort) setDdir((d) => (d === "asc" ? "desc" : "asc"));
+    else {
+      setDsort(k);
+      setDdir(k === "division" || k === "cat3" ? "asc" : "desc");
+    }
+  };
+  const valueOf = (l: DrillLine, k: DrillKey): number | string | null => {
+    const n = measureOf(measure, l.now), p = measureOf(measure, l.last);
+    switch (k) {
+      case "division": return divisionRank(l.division);
+      case "cat3": return l.cat3;
+      case "now": return n;
+      case "last": return p;
+      case "diff": return n != null && p != null ? n - p : null;
+      case "growth": return info.ratio ? null : growth(n, p);
+    }
+  };
+  // the lines in the sort order; a blank always goes last, and ties keep the division order, then the value order
+  const rows = useMemo(() => [...lines].sort((a, b) => {
+    const va = valueOf(a, dsort), vb = valueOf(b, dsort);
+    let c = 0;
+    if (va == null || vb == null) c = va == null && vb == null ? 0 : va == null ? 1 : -1;
+    else {
+      c = typeof va === "string" ? va.localeCompare(String(vb)) : (va as number) - (vb as number);
+      if (ddir === "desc") c = -c;
+    }
+    return c || divisionRank(a.division) - divisionRank(b.division) || (measureOf(measure, b.now) ?? 0) - (measureOf(measure, a.now) ?? 0);
+  }), [lines, measure, dsort, ddir, info.ratio]);
   const shown = useMemo(
     () => rows.filter((l) => inArea(l.division, area) && (!cat || l.cat3 === cat)),
     [rows, area, cat],
@@ -271,12 +311,12 @@ function OutletDrill({ code, name, data, cmp, short, onClose }: {
           <table className="ov-table drill-table">
             <thead>
               <tr>
-                <th scope="col" className="l">Division</th>
-                <th scope="col" className="l">Cat 3</th>
-                <th scope="col">This</th>
-                <th scope="col">{short}</th>
-                <th scope="col">{info.ratio ? "Diff (pts)" : "Diff"}</th>
-                <th scope="col">Growth %</th>
+                <SortTh k="division" label="Division" cls="l" sortKey={dsort} dir={ddir} onSort={onDrillSort} />
+                <SortTh k="cat3" label="Cat 3" cls="l" sortKey={dsort} dir={ddir} onSort={onDrillSort} />
+                <SortTh k="now" label="This" cls="" sortKey={dsort} dir={ddir} onSort={onDrillSort} />
+                <SortTh k="last" label={short} cls="" sortKey={dsort} dir={ddir} onSort={onDrillSort} />
+                <SortTh k="diff" label={info.ratio ? "Diff (pts)" : "Diff"} cls="" sortKey={dsort} dir={ddir} onSort={onDrillSort} />
+                <SortTh k="growth" label="Growth %" cls="" sortKey={dsort} dir={ddir} onSort={onDrillSort} />
               </tr>
             </thead>
             <tbody>
@@ -284,7 +324,7 @@ function OutletDrill({ code, name, data, cmp, short, onClose }: {
                 const c = cellsOf(l.now, l.last);
                 return (
                   <tr key={`${l.division}|${l.cat1}|${l.cat3}`}>
-                    <td className="l">{titleCase(l.division)}</td>
+                    <td className="l">{divisionLabel(l.division)}</td>
                     <td className="l">{titleCase(l.cat3)}</td>
                     <td>{show(c.n)}</td>
                     <td>{show(c.l)}</td>
