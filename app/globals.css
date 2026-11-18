@@ -542,6 +542,12 @@ td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .ov-table.drill-table { font-size: 12px; }
 .ov-table.drill-table th, .ov-table.drill-table td { padding: 5px 8px; }
 .ov-table.drill-table th.l, .ov-table.drill-table td.l { text-align: left; }
+/* the drill-down's division and Cat 3 filters, with the Export CSV link at the right */
+.drill-tools { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 14px; margin: 10px 0 4px; }
+.drill-tools label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; font-weight: 600; color: var(--ov-ink2); }
+.drill-tools select { min-width: 180px; }
+.drill-tools .drill-export { margin-left: auto; }
+.drill-tools .drill-export:disabled { opacity: 0.5; cursor: default; }
 .day-rows-table tfoot td.tint-green { background: #D9EFE1; }
 .day-rows-table tfoot td.tint-amber { background: #F6E6C8; }
 .day-rows-table tfoot td.tint-grey { background: #E3E8EF; }

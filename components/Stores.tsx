@@ -166,17 +166,26 @@ function OutletDrill({ code, name, data, cmp, short, onClose }: {
       return { division, cat1, cat3, now, last };
     });
   }, [data, code, cmp]);
-  // the lines by this month's value of the chosen measure, highest first
+  // the division and Cat 3 filters of the breakdown
+  const [area, setArea] = useState("");
+  const [cat, setCat] = useState("");
+  const divisions = useMemo(() => uniqSorted(lines.map((l) => l.division)), [lines]);
+  const cats = useMemo(() => uniqSorted(lines.filter((l) => !area || l.division === area).map((l) => l.cat3)), [lines, area]);
+  // the lines by this month's value of the chosen measure, highest first, then the filters
   const rows = useMemo(
     () => [...lines].sort((a, b) => (measureOf(measure, b.now) ?? 0) - (measureOf(measure, a.now) ?? 0)),
     [lines, measure],
   );
-  const sumOf = (pick: (l: DrillLine) => DrillFigures): DrillFigures =>
-    lines.reduce((t, l) => {
+  const shown = useMemo(
+    () => rows.filter((l) => (!area || l.division === area) && (!cat || l.cat3 === cat)),
+    [rows, area, cat],
+  );
+  const sumOf = (list: DrillLine[], pick: (l: DrillLine) => DrillFigures): DrillFigures =>
+    list.reduce((t, l) => {
       const v = pick(l);
       return { s: t.s + v.s, g: t.g + v.g, o: t.o + v.o };
     }, { s: 0, g: 0, o: 0 });
-  const totalNow = sumOf((l) => l.now), totalLast = sumOf((l) => l.last);
+  const totalNow = sumOf(shown, (l) => l.now), totalLast = sumOf(shown, (l) => l.last);
 
   // this month, the comparison, the difference and the growth, for the chosen measure (ratios give points, not growth)
   const cellsOf = (now: DrillFigures, last: DrillFigures) => {
@@ -184,10 +193,41 @@ function OutletDrill({ code, name, data, cmp, short, onClose }: {
     const d = n != null && l != null ? n - l : null;
     return { n, l, d, gr: info.ratio ? null : growth(n, l) };
   };
-  const show = (v: number | null) => (v == null ? "–" : info.ratio ? pct(v, 2) : crOrDash(v));
-  const shownDiff = (d: number | null) => (d == null ? "–" : info.ratio ? signedPct(d, 2) : crSigned(d));
+  // money in crore, or in lakh below one crore, so the small OI and GPV figures stay readable
+  const moneyShown = (v: number) => `${v < 0 ? "−" : ""}${Math.abs(v) >= 1e7 ? `${(Math.abs(v) / 1e7).toFixed(2)} Cr` : `${(Math.abs(v) / 1e5).toFixed(2)} L`}`;
+  const moneyDiffShown = (v: number) => `${v < 0 ? "−" : "+"}${moneyShown(Math.abs(v))}`;
+  const show = (v: number | null) => (v == null ? "–" : info.ratio ? pct(v, 2) : moneyShown(v));
+  const shownDiff = (d: number | null) => (d == null ? "–" : info.ratio ? signedPct(d, 2) : moneyDiffShown(d));
   const shownGr = (gr: number | null) => (info.ratio || gr == null ? "–" : `${arrowOf(toneOfNum(gr))}${signedPct(gr, 2)}`);
   const totals = cellsOf(totalNow, totalLast);
+
+  // the rows on screen, to a CSV file: the division, Cat 3, this month, the comparison, the difference and the growth;
+  // money in taka, ratios in percent
+  const exportCsv = () => {
+    const esc = (x: string | number | null) => {
+      if (x == null) return "";
+      const s = String(x);
+      return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const num = (v: number | null, ratio: boolean) => (v == null ? "" : (ratio ? v * 100 : v).toFixed(2));
+    const head = ["Division", "Cat 3", "This", short, info.ratio ? "Diff (pts)" : "Diff", info.ratio ? "" : "Growth %"];
+    const body = shown.map((l) => {
+      const c = cellsOf(l.now, l.last);
+      return [titleCase(l.division), titleCase(l.cat3), num(c.n, info.ratio), num(c.l, info.ratio), num(c.d, info.ratio),
+        info.ratio || c.gr == null ? "" : (c.gr * 100).toFixed(2)];
+    });
+    const foot = ["Total", "", num(totals.n, info.ratio), num(totals.l, info.ratio), num(totals.d, info.ratio),
+      info.ratio || totals.gr == null ? "" : (totals.gr * 100).toFixed(2)];
+    const text = "﻿" + [head, ...body, foot].map((r) => r.map(esc).join(",")).join("\r\n") + "\r\n";
+    const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${code}_${measure}_vs_${short}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="ov-panel drill-panel">
@@ -199,6 +239,21 @@ function OutletDrill({ code, name, data, cmp, short, onClose }: {
         {DRILL_MEASURES.map((m) => (
           <button key={m.key} type="button" aria-pressed={measure === m.key} onClick={() => setMeasure(m.key)}>{m.label}</button>
         ))}
+      </div>
+      <div className="drill-tools">
+        <label>Division
+          <select value={area} onChange={(e) => { setArea(e.target.value); setCat(""); }} aria-label="Division">
+            <option value="">All divisions</option>
+            {divisions.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
+          </select>
+        </label>
+        <label>Cat 3
+          <select value={cat} onChange={(e) => setCat(e.target.value)} aria-label="Cat 3">
+            <option value="">All Cat 3</option>
+            {cats.map((c) => <option key={c} value={c}>{titleCase(c)}</option>)}
+          </select>
+        </label>
+        <button type="button" className="linkish drill-export" onClick={exportCsv} disabled={!data || shown.length === 0}>Export CSV</button>
       </div>
       {!data ? (
         <p className="hint">Loading the category figures…</p>
@@ -218,7 +273,7 @@ function OutletDrill({ code, name, data, cmp, short, onClose }: {
               </tr>
             </thead>
             <tbody>
-              {rows.map((l) => {
+              {shown.map((l) => {
                 const c = cellsOf(l.now, l.last);
                 return (
                   <tr key={`${l.division}|${l.cat1}|${l.cat3}`}>
@@ -234,7 +289,7 @@ function OutletDrill({ code, name, data, cmp, short, onClose }: {
             </tbody>
             <tfoot>
               <tr>
-                <th scope="row" colSpan={2} className="l">Total · {rows.length} {rows.length === 1 ? "line" : "lines"}</th>
+                <th scope="row" colSpan={2} className="l">Total · {shown.length} {shown.length === 1 ? "line" : "lines"}</th>
                 <td>{show(totals.n)}</td>
                 <td>{show(totals.l)}</td>
                 <td><span className={`delta ${toneOfNum(totals.d)}`}>{shownDiff(totals.d)}</span></td>
