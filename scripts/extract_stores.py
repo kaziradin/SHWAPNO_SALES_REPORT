@@ -92,6 +92,7 @@ def read_zonal(path):
             "zonal": str(r[idx["Zonal"]] or "").strip(),
             "regional": str(r[idx["Regional Head HR Name"]] or "").strip(),
             "district": str(r[idx["District"]] or "").strip(),
+            "status": str(r[idx["Status"]] or "").strip(),
         }
     wb.close()
     return out
@@ -297,6 +298,12 @@ def main():
     codes = set(zonal) | {c for p in periods for c, rows_ in per[p].items() if any(r[0] for r in rows_)}
 
     def status_of(code):
+        # the zonal file's Status (Own or Fran) covers every outlet; the Outlet_DV lists are used only where it is blank
+        z = zonal.get(code, {}).get("status", "").lower()
+        if z == "own":
+            return "Own"
+        if z in ("fran", "franchise"):
+            return "Franchise"
         if code in dv.get("SPLY SAME OWN", set()) | dv.get("SPLY NEW OWN", set()):
             return "Own"
         if code in dv.get("SPLY SAME FRAN", set()) | dv.get("SPLY NEW FRAN", set()):
