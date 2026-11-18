@@ -120,7 +120,8 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
 
   // the outlets passing the filters (the day-wise charts use them for the whole month)
   const passing = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    // several codes or names, separated by commas: an outlet shows if it matches any of them
+    const terms = search.toLowerCase().split(",").map((t) => t.trim()).filter(Boolean);
     return outlets
       .filter((r) => store === "all" || (cmp === "sply" ? r.sameSply : r.sameSplm))
       .filter((r) => type === "all" || (type === "own" ? r.status === "Own" : r.status === "Franchise"))
@@ -128,7 +129,7 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
       .filter((r) => !format || r.format === format)
       .filter((r) => !leader || r.leader === leader)
       .filter((r) => !zonal || r.zonal === zonal)
-      .filter((r) => !q || r.code.toLowerCase().includes(q) || r.name.toLowerCase().includes(q));
+      .filter((r) => terms.length === 0 || terms.some((t) => r.code.toLowerCase().includes(t) || r.name.toLowerCase().includes(t)));
   }, [outlets, cmp, store, type, division, format, leader, zonal, search]);
   // the rows: the outlets passing the filters with sales in the chosen days
   const rows = useMemo(() => passing
@@ -293,7 +294,7 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
         {select("Leader", leader, setLeader, lists.leaders, "All leaders")}
         {select("Zonal", zonal, setZonal, lists.zonals, "All zonals")}
         <label>Outlet search
-          <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="name or code" aria-label="Outlet search" />
+          <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="codes or names, e.g. D062, D007" aria-label="Outlet search" />
         </label>
       </aside>
 
