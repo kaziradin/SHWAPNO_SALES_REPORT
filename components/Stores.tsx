@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { DailyData, OutletCatData, StoreRow, StoresData } from "@/lib/types";
 import { arrowOf, crOrDash, crSigned, full, growth, pct, signedPct, titleCase, toneOfNum } from "@/lib/format";
 import { CMP_SHORT, CMP_WORD, type Cmp, dayLong, storeKey, type StoreGroup, type StoreType, uniqSorted } from "@/lib/daily";
@@ -82,7 +82,7 @@ const sortValueOf = (x: Row, key: SortKey): number | string | null => {
 
 /** One measure's three cells: this period, the comparison, and the change (a growth for money and counts, points for ratios). */
 function Metric({ now, last, kind, tint, label }: { now: number | null; last: number | null; kind: Kind; tint: string; label: string }) {
-  const show = (v: number | null) => (v == null ? "–" : kind === "money" ? crOrDash(v) : kind === "count" ? full(v) : pct(v, 2));
+  const show = (v: number | null) => (v == null ? "–" : kind === "money" || kind === "count" ? full(v) : pct(v, 2));
   const change = kind === "ratio" ? (now != null && last != null ? now - last : null) : growth(now, last);
   const text = change == null ? "–" : kind === "ratio" ? signedPct(change, 2) : `${arrowOf(toneOfNum(change))}${signedPct(change, 2)}`;
   return (
@@ -99,8 +99,8 @@ function Metric({ now, last, kind, tint, label }: { now: number | null; last: nu
 function TargetTriple({ tgt, ach, gap, kind, tint, start }: {
   tgt: number | null; ach: number | null; gap: number | null; kind: "money" | "count"; tint: string; start?: boolean;
 }) {
-  const shownTgt = tgt == null ? "–" : kind === "money" ? crOrDash(tgt) : full(tgt);
-  const shownGap = gap == null ? "–" : kind === "money" ? crSigned(gap) : `${gap < 0 ? "−" : "+"}${full(Math.abs(gap))}`;
+  const shownTgt = tgt == null ? "–" : full(tgt);
+  const shownGap = gap == null ? "–" : `${gap < 0 ? "−" : "+"}${full(Math.abs(gap))}`;
   return (
     <>
       <td className={start ? `${tint} grp-start` : tint}>{shownTgt}</td>
@@ -346,6 +346,8 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
   const growthMode = view === "growth";
   // the numbers printed on the chart points
   const [labels, setLabels] = useState(true);
+  // the table, for the CSV export
+  const tableRef = useRef<HTMLTableElement>(null);
   // the outlet whose division and Cat 3 breakdown is open; its data is loaded the first time one is opened
   const [drill, setDrill] = useState<{ code: string; name: string } | null>(null);
   const [catData, setCatData] = useState<OutletCatData | null>(null);
@@ -522,6 +524,31 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
     setSearch("");
   };
 
+  // the table as it shows on screen, to a CSV file: one line per row, the same columns, numbers without thousands separators
+  const exportTable = () => {
+    const table = tableRef.current;
+    if (!table) return;
+    const clean = (s: string) => s.replace(/[▲▼]/g, "").replace(/−/g, "-").replace(/(\d),(?=\d{3}(?!\d))/g, "$1").replace(/\s+/g, " ").trim();
+    const esc = (x: string) => (/[",\r\n]/.test(x) ? `"${x.replace(/"/g, '""')}"` : x);
+    const lines = [...table.querySelectorAll("tr")].map((tr) => {
+      // a cell that spans columns (the total row's label) is followed by blanks, so the columns stay in line
+      const cells = [...tr.children].flatMap((c) => {
+        const text = c.textContent ?? "";
+        const shown = text.trim() === "–" ? "" : clean(text);
+        return [shown, ...Array((c as HTMLTableCellElement).colSpan - 1).fill("")];
+      });
+      return cells.map(esc).join(",");
+    });
+    const url = URL.createObjectURL(new Blob(["﻿" + lines.join("\r\n") + "\r\n"], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `store-wise_${cmp}_${from}_to_${to}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
   const select = (label: string, value: string, set: (v: string) => void, options: string[], all: string, show: (v: string) => string = (v) => v) => (
     <label>{label}
       <select value={value} onChange={(e) => set(e.target.value)} aria-label={label}>
@@ -638,8 +665,11 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
         {drill && <OutletDrill code={drill.code} name={drill.name} data={catData} cmp={cmp} short={short} onClose={() => setDrill(null)} />}
 
         <div className="ov-panel ov-table-panel">
+          <div className="table-tools">
+            <button type="button" className="linkish" onClick={exportTable} disabled={rows.length === 0}>Export CSV</button>
+          </div>
           <div className="ov-table-scroll">
-            <table className="ov-table stores-table tinted">
+            <table ref={tableRef} className="ov-table stores-table tinted">
               <thead>
                 <tr>
                   <SortTh k="code" label="Code" cls="l st-c1" {...head} />

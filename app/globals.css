@@ -548,6 +548,9 @@ td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .drill-tools select { min-width: 180px; }
 .drill-tools .drill-export { margin-left: auto; }
 .drill-tools .drill-export:disabled { opacity: 0.5; cursor: default; }
+/* the store table's Export CSV link, above the table at the right */
+.table-tools { display: flex; justify-content: flex-end; padding: 6px 4px 8px; }
+.table-tools button:disabled { opacity: 0.5; cursor: default; }
 .day-rows-table tfoot td.tint-green { background: #D9EFE1; }
 .day-rows-table tfoot td.tint-amber { background: #F6E6C8; }
 .day-rows-table tfoot td.tint-grey { background: #E3E8EF; }
