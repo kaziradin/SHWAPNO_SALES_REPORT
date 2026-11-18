@@ -193,9 +193,10 @@ function OutletDrill({ code, name, data, cmp, short, onClose }: {
     const d = n != null && l != null ? n - l : null;
     return { n, l, d, gr: info.ratio ? null : growth(n, l) };
   };
-  // money in crore, or in lakh below one crore, so the small OI and GPV figures stay readable
-  const moneyShown = (v: number) => `${v < 0 ? "−" : ""}${Math.abs(v) >= 1e7 ? `${(Math.abs(v) / 1e7).toFixed(2)} Cr` : `${(Math.abs(v) / 1e5).toFixed(2)} L`}`;
-  const moneyDiffShown = (v: number) => `${v < 0 ? "−" : "+"}${moneyShown(Math.abs(v))}`;
+  // money as whole taka with thousands separators (1,455,555), so the figures compare directly
+  const fmtTaka = (v: number) => Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: 0 });
+  const moneyShown = (v: number) => `${v < 0 ? "−" : ""}${fmtTaka(v)}`;
+  const moneyDiffShown = (v: number) => `${v < 0 ? "−" : "+"}${fmtTaka(v)}`;
   const show = (v: number | null) => (v == null ? "–" : info.ratio ? pct(v, 2) : moneyShown(v));
   const shownDiff = (d: number | null) => (d == null ? "–" : info.ratio ? signedPct(d, 2) : moneyDiffShown(d));
   const shownGr = (gr: number | null) => (info.ratio || gr == null ? "–" : `${arrowOf(toneOfNum(gr))}${signedPct(gr, 2)}`);
