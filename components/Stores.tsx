@@ -719,14 +719,6 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
             );
           })}
         </section>
-        <p className="ov-note">
-          {rows.length} {rows.length === 1 ? "outlet" : "outlets"} · {periodName}. Each outlet is compared with the same days {CMP_WORD[cmp]}.{" "}
-          {chosen.length === 0 && "No days fall in this range; choose dates inside the data period."}
-          {from > to && " The two dates were swapped, so the range runs from the earlier to the later date."}
-          {useDaily && " Totals are the Category wise figures for this store group, so they match that tab; the outlet rows come from the outlet files and can differ from the total by about 0.2% on GPV."}
-          {" "}Targets from {data.targetFile}
-          {noTarget > 0 && `; ${noTarget} ${noTarget === 1 ? "outlet has" : "outlets have"} no target in it`}.
-        </p>
 
         <div className="day-chart-bar">
           <div className="seg" role="group" aria-label="Chart data level">
