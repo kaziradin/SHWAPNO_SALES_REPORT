@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { DailyData, OutletCatData, StoreRow, StoresData } from "@/lib/types";
 import { arrowOf, crOrDash, crSigned, full, growth, pct, signedPct, titleCase, toneOfNum } from "@/lib/format";
-import { CMP_SHORT, CMP_WORD, type Cmp, dayLong, storeKey, type StoreGroup, type StoreType, uniqSorted } from "@/lib/daily";
+import { CMP_SHORT, CMP_WORD, type Cmp, dayLong, SHOWN_DIVISIONS, storeKey, type StoreGroup, type StoreType, uniqSorted } from "@/lib/daily";
 import DayLines, { type DayPoint } from "./DayLines";
 
 type Kind = "money" | "count" | "ratio";
@@ -124,6 +124,11 @@ function SortTh({ k, label, cls, sortKey, dir, onSort }: {
   );
 }
 
+/** The drill-down's division filter: "Others" stands for every division that is not one of the six main ones. */
+const OTHERS = "__others__";
+const inArea = (division: string, area: string) =>
+  !area || (area === OTHERS ? !SHOWN_DIVISIONS.includes(division) : division === area);
+
 /** The measures of the outlet drill-down. The ratios are over sales; GPV+OI is GPV plus value adj (OI). */
 type DrillMeasure = "sales" | "gpv" | "oi" | "gpvoi" | "gp" | "gpvoipct";
 const DRILL_MEASURES: { key: DrillMeasure; label: string; ratio: boolean }[] = [
@@ -166,18 +171,18 @@ function OutletDrill({ code, name, data, cmp, short, onClose }: {
       return { division, cat1, cat3, now, last };
     });
   }, [data, code, cmp]);
-  // the division and Cat 3 filters of the breakdown
+  // the division and Cat 3 filters of the breakdown: the six main divisions, and "Others" for every other division
   const [area, setArea] = useState("");
   const [cat, setCat] = useState("");
-  const divisions = useMemo(() => uniqSorted(lines.map((l) => l.division)), [lines]);
-  const cats = useMemo(() => uniqSorted(lines.filter((l) => !area || l.division === area).map((l) => l.cat3)), [lines, area]);
+  const hasOthers = useMemo(() => lines.some((l) => !SHOWN_DIVISIONS.includes(l.division)), [lines]);
+  const cats = useMemo(() => uniqSorted(lines.filter((l) => inArea(l.division, area)).map((l) => l.cat3)), [lines, area]);
   // the lines by this month's value of the chosen measure, highest first, then the filters
   const rows = useMemo(
     () => [...lines].sort((a, b) => (measureOf(measure, b.now) ?? 0) - (measureOf(measure, a.now) ?? 0)),
     [lines, measure],
   );
   const shown = useMemo(
-    () => rows.filter((l) => (!area || l.division === area) && (!cat || l.cat3 === cat)),
+    () => rows.filter((l) => inArea(l.division, area) && (!cat || l.cat3 === cat)),
     [rows, area, cat],
   );
   const sumOf = (list: DrillLine[], pick: (l: DrillLine) => DrillFigures): DrillFigures =>
@@ -245,7 +250,8 @@ function OutletDrill({ code, name, data, cmp, short, onClose }: {
         <label>Division
           <select value={area} onChange={(e) => { setArea(e.target.value); setCat(""); }} aria-label="Division">
             <option value="">All divisions</option>
-            {divisions.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
+            {SHOWN_DIVISIONS.map((d) => <option key={d} value={d}>{titleCase(d)}</option>)}
+            {hasOthers && <option value={OTHERS}>Others</option>}
           </select>
         </label>
         <label>Cat 3
@@ -351,6 +357,11 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
   // the outlet whose division and Cat 3 breakdown is open; its data is loaded the first time one is opened
   const [drill, setDrill] = useState<{ code: string; name: string } | null>(null);
   const [catData, setCatData] = useState<OutletCatData | null>(null);
+  // opens an outlet's breakdown (from its code or its name); once it is on the page, it is brought into view above the table
+  const openDrill = (code: string, name: string) => setDrill({ code, name });
+  useEffect(() => {
+    if (drill) document.querySelector(".drill-panel")?.scrollIntoView({ block: "start" });
+  }, [drill]);
   useEffect(() => {
     if (!drill || catData) return;
     let live = true;
@@ -716,9 +727,9 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
                   const fg = figuresOf({ r, now, last, tgt });
                   return (
                     <tr key={r.code}>
-                      <td className="l st-c1">{r.code}</td>
+                      <td className="l st-c1"><button type="button" className="outlet-link" onClick={() => openDrill(r.code, r.name)}>{r.code}</button></td>
                       <td className="l st-c2" title={r.name}>
-                        <button type="button" className="outlet-link" onClick={() => setDrill({ code: r.code, name: r.name })}>{r.name}</button>
+                        <button type="button" className="outlet-link" onClick={() => openDrill(r.code, r.name)}>{r.name}</button>
                       </td>
                       <td className="l">{r.division ? titleCase(r.division) : "–"}</td>
                       <td className="l">{r.status}</td>
