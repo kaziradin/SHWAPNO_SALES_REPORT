@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, type CSSProperties } from "react";
+import { useRef, useState, type CSSProperties } from "react";
 import type { CrpFf, DailyHead, DayFields, DetailRow } from "@/lib/types";
 import { abbrOf, arrowOf, full, growth, pct, signedPct, titleCase, toneOfNum } from "@/lib/format";
 import { dayMonth, dayWeekday, isFriSat } from "@/lib/daily";
+import ExportCsv from "./ExportCsv";
 
 type Measure = "sales" | "gpv" | "gpvoi" | "gp" | "goi" | "bs" | "ff";
 const MEASURES: { k: Measure; l: string }[] = [
@@ -122,6 +123,7 @@ export default function DayByHead({ heads, totalF, detailRows, crpFf, days, cmpS
   const n = days.length;
   const [headKey, setHeadKey] = useState<string | null>(null);
   const [crpName, setCrpName] = useState<string | null>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
   const [measure, setMeasure] = useState<Measure>("sales");
 
   const headOf = heads.find((h) => `${h.division}|${h.head}` === headKey) ?? null;
@@ -187,8 +189,9 @@ export default function DayByHead({ heads, totalF, detailRows, crpFf, days, cmpS
         ))}
       </div>
       <div className="ov-panel ov-table-panel">
+        <ExportCsv tableRef={tableRef} filename="day-by-head.csv" />
         <div className="ov-table-scroll">
-          <table className="ov-table dh day-head-table">
+          <table ref={tableRef} className="ov-table dh day-head-table">
             <caption>{scope}. Click a head&apos;s › to see its persons, and a person&apos;s › to see their categories.</caption>
             <thead>
               <tr>

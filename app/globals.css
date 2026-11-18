@@ -356,6 +356,8 @@ td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .day-kpis .ov-kpi-value { font-size: 19px; margin: 2px 0 0; }
 .day-kpis .ov-kpi-cmp { font-size: 11.5px; }
 .day-kpis .ov-kpi-delta { margin-top: 2px; padding-top: 4px; font-size: 12px; }
+/* the Export CSV link above a table, at the right */
+.csv-tools { display: flex; justify-content: flex-end; padding: 4px 4px 6px; }
 /* Category heads and Day by day, by head: a smaller font, so the whole-taka figures fit more of the table */
 .ov-table.dh { font-size: 11px; }
 /* Day wise charts: the data level switch (Values or Growth %) sits under the KPI band, above the charts */

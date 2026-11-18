@@ -1,10 +1,11 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useRef, useState } from "react";
 import type { HeadRow } from "@/lib/types";
 import { abbrOf, full, pct, roleName, signedPct, titleCase } from "@/lib/format";
 import type { Figures, Ratios } from "@/lib/daily";
 import { WIDE, WideCells } from "./HeadMeasures";
+import ExportCsv from "./ExportCsv";
 
 /** A category under a responsible person, for the chosen days. */
 export type DayCatRow = { name: string; f: Figures; x: Ratios };
@@ -47,10 +48,12 @@ export default function DayHeads({ rows, total, totalLabel, cmpShort, caption, o
 }) {
   // footfall and basket show a dash where they cannot be counted exactly for the selection
   const shown = MEASURE_ORDER;
+  const tableRef = useRef<HTMLTableElement>(null);
   return (
     <div className="ov-panel ov-table-panel">
+      <ExportCsv tableRef={tableRef} filename="category-heads.csv" />
       <div className="ov-table-scroll">
-        <table className="ov-table dh tinted">
+        <table ref={tableRef} className="ov-table dh tinted">
           <caption>{caption}</caption>
           <thead>
             <tr>
@@ -132,6 +135,7 @@ export function DayHeadDrill({ head, cmpShort, scopeText, onBack }: {
   onBack: () => void;
 }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
+  const tableRef = useRef<HTMLTableElement>(null);
   const toggle = (name: string) => setOpen((s) => {
     const next = new Set(s);
     if (next.has(name)) next.delete(name);
@@ -147,8 +151,9 @@ export function DayHeadDrill({ head, cmpShort, scopeText, onBack }: {
           <p className="hint">{titleCase(head.division)} · {roleName(head.role)} · responsible persons and categories (Cat 3) · vs {cmpShort} · {scopeText}</p>
         </div>
       </div>
+      <ExportCsv tableRef={tableRef} filename="category-head-drill.csv" />
       <div className="table-wrap">
-        <table>
+        <table ref={tableRef}>
           <thead>
             <tr>
               <th scope="col" className="l">Category (Cat 3)</th>

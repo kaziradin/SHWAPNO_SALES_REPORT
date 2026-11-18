@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import type { CrpFf, DailyData, DailyDetailData, DailyHead, DayFields, DetailRow, DivFf, StoreKey } from "@/lib/types";
 import { abbrOf, arrowOf, crFmt, crOrDash, crSigned, full, growth, pct, roleName, signedPct, titleCase, toneOfNum } from "@/lib/format";
 import {
@@ -10,6 +10,7 @@ import {
 import DayLines, { type DayPoint } from "./DayLines";
 import DayHeads, { DayHeadDrill, type DayCrpRow, type DayHeadRow } from "./DayHeads";
 import DayByHead from "./DayByHead";
+import ExportCsv from "./ExportCsv";
 
 const STORE_GROUP_LABEL: Record<StoreGroup, string> = { all: "All stores", same: "Same stores" };
 const TYPE_LABEL: Record<StoreType, string> = { all: "Own and franchise", own: "Own stores", fran: "Franchise stores" };
@@ -118,6 +119,7 @@ export default function Daily({ daily }: { daily: DailyData }) {
   // the charts show the values (this month against the comparison), or each day's growth (GR%) against it
   const [view, setView] = useState<"values" | "growth">("values");
   const growthMode = view === "growth";
+  const dayRowsRef = useRef<HTMLTableElement>(null);
   // the numbers printed on the chart points
   const [labels, setLabels] = useState(true);
 
@@ -484,8 +486,9 @@ export default function Daily({ daily }: { daily: DailyData }) {
 
       <div className="ov-section-head"><h2>Day by day, vs {CMP_SHORT[cmp]}</h2></div>
       <div className="ov-panel ov-table-panel">
+        <ExportCsv tableRef={dayRowsRef} filename={`day-by-day_${cmp}.csv`} />
         <div className="ov-table-scroll day-rows-scroll">
-          <table className="ov-table day-rows-table">
+          <table ref={dayRowsRef} className="ov-table day-rows-table">
             <caption>
               {selectionLabel}, {STORE_LABEL[group].toLowerCase()}, {periodName}. Each day against the same day {CMP_WORD[cmp]}.
             </caption>
