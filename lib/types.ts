@@ -104,6 +104,15 @@ export type StoreRow = {
   target: TargetDay[] | null;
 };
 
+/** The Division x Category Level 1 x Category Level 3 lines of each outlet, for the outlet drill-down on the Store wise tab.
+ *  keys[i] is [Division, Category L1, Category L3]. An outlet's line is [key index, this sales, this GPV, this OI, SPLY sales,
+ *  SPLY GPV, SPLY OI, SPLM sales, SPLM GPV, SPLM OI] in taka. */
+export type OutletCatData = {
+  generatedAt: string; asOf: string; periodLabel: string;
+  keys: string[][];
+  outlets: Record<string, number[][]>;
+};
+
 export type StoresData = {
   generatedAt: string; asOf: string; periodLabel: string; zonalFile: string;
   /** The Store wise target file for the month of the data. */

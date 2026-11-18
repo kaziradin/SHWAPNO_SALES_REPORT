@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { DailyData, StoreRow, StoresData } from "@/lib/types";
+import type { DailyData, OutletCatData, StoreRow, StoresData } from "@/lib/types";
 import { arrowOf, crOrDash, crSigned, full, growth, pct, signedPct, titleCase, toneOfNum } from "@/lib/format";
 import { CMP_SHORT, CMP_WORD, type Cmp, dayLong, storeKey, type StoreGroup, type StoreType, uniqSorted } from "@/lib/daily";
 import DayLines, { type DayPoint } from "./DayLines";
@@ -124,6 +124,130 @@ function SortTh({ k, label, cls, sortKey, dir, onSort }: {
   );
 }
 
+/** The measures of the outlet drill-down. The ratios are over sales; GPV+OI is GPV plus value adj (OI). */
+type DrillMeasure = "sales" | "gpv" | "oi" | "gpvoi" | "gp" | "gpvoipct";
+const DRILL_MEASURES: { key: DrillMeasure; label: string; ratio: boolean }[] = [
+  { key: "sales", label: "Sales", ratio: false },
+  { key: "gpv", label: "GPV", ratio: false },
+  { key: "oi", label: "OI", ratio: false },
+  { key: "gpvoi", label: "GPV+OI", ratio: false },
+  { key: "gp", label: "GP%", ratio: true },
+  { key: "gpvoipct", label: "GPV+OI%", ratio: true },
+];
+
+/** One outlet's figures on one line (a division, a Category L1 and a Category L3), this month and for the comparison. */
+type DrillFigures = { s: number; g: number; o: number };
+type DrillLine = { division: string; cat1: string; cat3: string; now: DrillFigures; last: DrillFigures };
+
+/** A measure's value for some figures: money in taka, or a ratio over sales (null where there are no sales). */
+const measureOf = (m: DrillMeasure, v: DrillFigures): number | null => {
+  switch (m) {
+    case "sales": return v.s;
+    case "gpv": return v.g;
+    case "oi": return v.o;
+    case "gpvoi": return v.g + v.o;
+    case "gp": return v.s ? v.g / v.s : null;
+    case "gpvoipct": return v.s ? (v.g + v.o) / v.s : null;
+  }
+};
+
+/** An outlet's breakdown by division and Category Level 3, for the chosen measure, this month against the comparison. */
+function OutletDrill({ code, name, data, cmp, short, onClose }: {
+  code: string; name: string; data: OutletCatData | null; cmp: Cmp; short: string; onClose: () => void;
+}) {
+  const [measure, setMeasure] = useState<DrillMeasure>("sales");
+  const info = DRILL_MEASURES.find((m) => m.key === measure) ?? DRILL_MEASURES[0];
+  const lines = useMemo<DrillLine[]>(() => {
+    if (!data) return [];
+    return (data.outlets[code] ?? []).map((ln) => {
+      const [division, cat1, cat3] = data.keys[ln[0]];
+      const now = { s: ln[1], g: ln[2], o: ln[3] };
+      const last = cmp === "sply" ? { s: ln[4], g: ln[5], o: ln[6] } : { s: ln[7], g: ln[8], o: ln[9] };
+      return { division, cat1, cat3, now, last };
+    });
+  }, [data, code, cmp]);
+  // the lines by this month's value of the chosen measure, highest first
+  const rows = useMemo(
+    () => [...lines].sort((a, b) => (measureOf(measure, b.now) ?? 0) - (measureOf(measure, a.now) ?? 0)),
+    [lines, measure],
+  );
+  const sumOf = (pick: (l: DrillLine) => DrillFigures): DrillFigures =>
+    lines.reduce((t, l) => {
+      const v = pick(l);
+      return { s: t.s + v.s, g: t.g + v.g, o: t.o + v.o };
+    }, { s: 0, g: 0, o: 0 });
+  const totalNow = sumOf((l) => l.now), totalLast = sumOf((l) => l.last);
+
+  // this month, the comparison, the difference and the growth, for the chosen measure (ratios give points, not growth)
+  const cellsOf = (now: DrillFigures, last: DrillFigures) => {
+    const n = measureOf(measure, now), l = measureOf(measure, last);
+    const d = n != null && l != null ? n - l : null;
+    return { n, l, d, gr: info.ratio ? null : growth(n, l) };
+  };
+  const show = (v: number | null) => (v == null ? "–" : info.ratio ? pct(v, 2) : crOrDash(v));
+  const shownDiff = (d: number | null) => (d == null ? "–" : info.ratio ? signedPct(d, 2) : crSigned(d));
+  const shownGr = (gr: number | null) => (info.ratio || gr == null ? "–" : `${arrowOf(toneOfNum(gr))}${signedPct(gr, 2)}`);
+  const totals = cellsOf(totalNow, totalLast);
+
+  return (
+    <div className="ov-panel drill-panel">
+      <div className="drill-head">
+        <h3>{code} · {name} · by division and Cat 3, vs {short}</h3>
+        <button type="button" className="linkish" onClick={onClose}>Close</button>
+      </div>
+      <div className="seg" role="group" aria-label="Measure">
+        {DRILL_MEASURES.map((m) => (
+          <button key={m.key} type="button" aria-pressed={measure === m.key} onClick={() => setMeasure(m.key)}>{m.label}</button>
+        ))}
+      </div>
+      {!data ? (
+        <p className="hint">Loading the category figures…</p>
+      ) : lines.length === 0 ? (
+        <p className="hint">No sales or OI lines for this outlet in these days.</p>
+      ) : (
+        <div className="ov-table-scroll drill-scroll">
+          <table className="ov-table drill-table">
+            <thead>
+              <tr>
+                <th scope="col" className="l">Division</th>
+                <th scope="col" className="l">Cat 3</th>
+                <th scope="col">This</th>
+                <th scope="col">{short}</th>
+                <th scope="col">{info.ratio ? "Diff (pts)" : "Diff"}</th>
+                <th scope="col">Growth %</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((l) => {
+                const c = cellsOf(l.now, l.last);
+                return (
+                  <tr key={`${l.division}|${l.cat1}|${l.cat3}`}>
+                    <td className="l">{titleCase(l.division)}</td>
+                    <td className="l">{titleCase(l.cat3)}</td>
+                    <td>{show(c.n)}</td>
+                    <td>{show(c.l)}</td>
+                    <td><span className={`delta ${toneOfNum(c.d)}`}>{shownDiff(c.d)}</span></td>
+                    <td><span className={`delta ${toneOfNum(c.gr)}`}>{shownGr(c.gr)}</span></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot>
+              <tr>
+                <th scope="row" colSpan={2} className="l">Total · {rows.length} {rows.length === 1 ? "line" : "lines"}</th>
+                <td>{show(totals.n)}</td>
+                <td>{show(totals.l)}</td>
+                <td><span className={`delta ${toneOfNum(totals.d)}`}>{shownDiff(totals.d)}</span></td>
+                <td><span className={`delta ${toneOfNum(totals.gr)}`}>{shownGr(totals.gr)}</span></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** The Store wise performance tab: one row per outlet, with its area and status.
  *  The filters sit in a panel beside the table, as on the Category wise performance tab. */
 export default function Stores() {
@@ -166,6 +290,17 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
   const growthMode = view === "growth";
   // the numbers printed on the chart points
   const [labels, setLabels] = useState(true);
+  // the outlet whose division and Cat 3 breakdown is open; its data is loaded the first time one is opened
+  const [drill, setDrill] = useState<{ code: string; name: string } | null>(null);
+  const [catData, setCatData] = useState<OutletCatData | null>(null);
+  useEffect(() => {
+    if (!drill || catData) return;
+    let live = true;
+    import("@/data/outlet-cat.json").then((m) => {
+      if (live) setCatData(m.default as unknown as OutletCatData);
+    });
+    return () => { live = false; };
+  }, [drill, catData]);
 
   const outlets = data.outlets;
   const lists = useMemo(() => ({
@@ -444,6 +579,8 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
           </div>
         </div>
 
+        {drill && <OutletDrill code={drill.code} name={drill.name} data={catData} cmp={cmp} short={short} onClose={() => setDrill(null)} />}
+
         <div className="ov-panel ov-table-panel">
           <div className="ov-table-scroll">
             <table className="ov-table stores-table tinted">
@@ -494,7 +631,9 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
                   return (
                     <tr key={r.code}>
                       <td className="l st-c1">{r.code}</td>
-                      <td className="l st-c2" title={r.name}>{r.name}</td>
+                      <td className="l st-c2" title={r.name}>
+                        <button type="button" className="outlet-link" onClick={() => setDrill({ code: r.code, name: r.name })}>{r.name}</button>
+                      </td>
                       <td className="l">{r.division ? titleCase(r.division) : "–"}</td>
                       <td className="l">{r.status}</td>
                       <Metric now={now.sales} last={last.sales} kind="money" tint={TINT.Sales} label="Sales" />

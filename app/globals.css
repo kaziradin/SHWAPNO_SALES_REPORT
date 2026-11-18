@@ -530,6 +530,17 @@ td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .ov-table.stores-table .th-sort:hover { text-decoration: underline; }
 .ov-table.stores-table .th-sort:focus-visible { outline: 2px solid #1d4ed8; outline-offset: 2px; }
 .ov-table.stores-table .th-arrow { font-size: 10px; }
+/* the outlet name opens its division and Cat 3 breakdown */
+.outlet-link { background: none; border: 0; padding: 0; margin: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; text-decoration: underline dotted; }
+.outlet-link:hover { color: #1d4ed8; }
+.outlet-link:focus-visible { outline: 2px solid #1d4ed8; outline-offset: 2px; }
+/* the outlet drill-down panel: its header, measure tabs and table */
+.drill-panel { margin-bottom: 14px; }
+.drill-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
+.drill-head h3 { font-size: 13px; color: #0f2744; }
+.drill-scroll { max-height: 60vh; margin-top: 10px; }
+.ov-table.drill-table { font-size: 12px; }
+.ov-table.drill-table th, .ov-table.drill-table td { padding: 5px 8px; }
 .day-rows-table tfoot td.tint-green { background: #D9EFE1; }
 .day-rows-table tfoot td.tint-amber { background: #F6E6C8; }
 .day-rows-table tfoot td.tint-grey { background: #E3E8EF; }
