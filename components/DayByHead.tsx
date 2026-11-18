@@ -2,7 +2,7 @@
 
 import { useState, type CSSProperties } from "react";
 import type { CrpFf, DailyHead, DayFields, DetailRow } from "@/lib/types";
-import { abbrOf, arrowOf, crOrDash, full, growth, pct, signedPct, titleCase, toneOfNum } from "@/lib/format";
+import { abbrOf, arrowOf, full, growth, pct, signedPct, titleCase, toneOfNum } from "@/lib/format";
 import { dayMonth, dayWeekday, isFriSat } from "@/lib/daily";
 
 type Measure = "sales" | "gpv" | "gpvoi" | "gp" | "goi" | "bs" | "ff";
@@ -112,7 +112,7 @@ function ValueCell({ m, n, l, style }: { m: Measure; n: number | null; l: number
 }
 
 const shown = (v: number | null, m: Measure) =>
-  v == null ? "–" : m === "sales" || m === "gpv" || m === "gpvoi" ? crOrDash(v) : m === "gp" || m === "goi" ? pct(v, 2) : full(v);
+  v == null ? "–" : m === "gp" || m === "goi" ? pct(v, 2) : full(v);
 
 /** The day-by-day table of the heads: a measure selector, one column per day, and a drill from head to person to category.
  *  Footfall is counted for a head, a person under it (crpFf) and a category of that person; a blank means not counted. */

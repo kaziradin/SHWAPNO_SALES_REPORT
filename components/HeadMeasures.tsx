@@ -1,7 +1,7 @@
 "use client";
 
 import type { HeadRow } from "@/lib/types";
-import { arrowOf, crOrDash, crSigned, pct, signedPct, toneOfNum } from "@/lib/format";
+import { arrowOf, full, pct, signedPct, toneOfNum } from "@/lib/format";
 
 /** Growth of this period against the comparison; blank when either is missing or zero. */
 const growthOf = (n?: number | null, l?: number | null): number | null => (!n || !l ? null : n / l - 1);
@@ -42,8 +42,9 @@ export function WideCells({ m, r, tint, groupStart }: { m: WideMeasure; r: Parti
   const n = m.now(r) ?? null, l = m.last(r) ?? null;
   const d = n != null && l != null ? n - l : null;
   const g = growthOf(n, l);
-  const value = (v: number | null) => (m.kind === "money" ? crOrDash(v) : m.kind === "count" ? (v == null ? "–" : fm(v)) : pct(v, 2));
-  const diff = m.kind === "money" ? (d == null ? "–" : crSigned(d))
+  // money as whole taka with separators (1,333,333); footfall and basket as before; percentages to two decimals
+  const value = (v: number | null) => (m.kind === "money" ? full(v) : m.kind === "count" ? (v == null ? "–" : fm(v)) : pct(v, 2));
+  const diff = m.kind === "money" ? (d == null ? "–" : `${d >= 0 ? "+" : "−"}${full(Math.abs(d))}`)
     : m.kind === "count" ? (d == null ? "–" : `${d >= 0 ? "+" : "−"}${fm(Math.abs(d))}`)
     : signedPct(d, 2);
   return (

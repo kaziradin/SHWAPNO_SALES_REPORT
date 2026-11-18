@@ -2,7 +2,7 @@
 
 import { Fragment, useState } from "react";
 import type { HeadRow } from "@/lib/types";
-import { abbrOf, crOrDash, full, pct, roleName, signedPct, titleCase } from "@/lib/format";
+import { abbrOf, full, pct, roleName, signedPct, titleCase } from "@/lib/format";
 import type { Figures, Ratios } from "@/lib/daily";
 import { WIDE, WideCells } from "./HeadMeasures";
 
@@ -113,10 +113,10 @@ function PointChange({ now, last }: { now: number | null; last: number | null })
 function MetricCells({ f, x }: { f: Figures; x: Ratios }) {
   return (
     <>
-      <td><div>{crOrDash(f.sales)}</div><div><Growth now={f.sales} last={f.splySales} /></div></td>
-      <td><div>{crOrDash(f.gpv)}</div><div><Growth now={f.gpv} last={f.splyGpv} /></div></td>
+      <td><div>{full(f.sales)}</div><div><Growth now={f.sales} last={f.splySales} /></div></td>
+      <td><div>{full(f.gpv)}</div><div><Growth now={f.gpv} last={f.splyGpv} /></div></td>
       <td><div>{pct(x.gp, 2)}</div><div><PointChange now={x.gp} last={x.splyGp} /></div></td>
-      <td><div>{crOrDash(f.gpvOi)}</div><div><Growth now={f.gpvOi} last={f.splyGpvOi} /></div></td>
+      <td><div>{full(f.gpvOi)}</div><div><Growth now={f.gpvOi} last={f.splyGpvOi} /></div></td>
       <td><div>{pct(x.goi, 2)}</div><div><PointChange now={x.goi} last={x.splyGoi} /></div></td>
       <td><div>{full(f.ff)}</div><div><Growth now={f.ff} last={f.splyFf} /></div></td>
       <td><div>{full(x.bs)}</div><div><Growth now={x.bs} last={x.splyBs} /></div></td>
