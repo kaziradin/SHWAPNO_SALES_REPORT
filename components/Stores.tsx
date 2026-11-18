@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { DailyData, StoresData } from "@/lib/types";
 import { arrowOf, crOrDash, full, growth, pct, signedPct, titleCase, toneOfNum } from "@/lib/format";
 import { CMP_SHORT, CMP_WORD, type Cmp, dayLong, storeKey, type StoreGroup, type StoreType, uniqSorted } from "@/lib/daily";
+import DayLines, { type DayPoint } from "./DayLines";
 
 type Kind = "money" | "count" | "ratio";
 
@@ -92,6 +93,9 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
   const [leader, setLeader] = useState("");
   const [zonal, setZonal] = useState("");
   const [search, setSearch] = useState("");
+  // the day-wise charts show the values (this month against the comparison), or each day's growth (GR%) against it
+  const [view, setView] = useState<"values" | "growth">("values");
+  const growthMode = view === "growth";
 
   const outlets = data.outlets;
   const lists = useMemo(() => ({
@@ -112,20 +116,23 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
     : lo === hi ? dayLong(lo)
     : `${dayLong(lo)} to ${dayLong(hi)}`;
 
-  const rows = useMemo(() => {
+  // the outlets passing the filters (the day-wise charts use them for the whole month)
+  const passing = useMemo(() => {
     const q = search.trim().toLowerCase();
     return outlets
-      .map((r) => ({ r, now: sumDays(r.daily.this, chosen), last: sumDays(r.daily[cmp], chosen), tgt: r.target ? sumDays(r.target, chosen) : null }))
-      .filter(({ r }) => store === "all" || (cmp === "sply" ? r.sameSply : r.sameSplm))
-      .filter(({ r }) => type === "all" || (type === "own" ? r.status === "Own" : r.status === "Franchise"))
-      .filter(({ r }) => !division || r.division === division)
-      .filter(({ r }) => !format || r.format === format)
-      .filter(({ r }) => !leader || r.leader === leader)
-      .filter(({ r }) => !zonal || r.zonal === zonal)
-      .filter(({ r }) => !q || r.code.toLowerCase().includes(q) || r.name.toLowerCase().includes(q))
-      .filter(({ now, last }) => now.sales > 0 || last.sales > 0)
-      .sort((a, b) => b.now.sales - a.now.sales);
-  }, [outlets, chosen, cmp, store, type, division, format, leader, zonal, search]);
+      .filter((r) => store === "all" || (cmp === "sply" ? r.sameSply : r.sameSplm))
+      .filter((r) => type === "all" || (type === "own" ? r.status === "Own" : r.status === "Franchise"))
+      .filter((r) => !division || r.division === division)
+      .filter((r) => !format || r.format === format)
+      .filter((r) => !leader || r.leader === leader)
+      .filter((r) => !zonal || r.zonal === zonal)
+      .filter((r) => !q || r.code.toLowerCase().includes(q) || r.name.toLowerCase().includes(q));
+  }, [outlets, cmp, store, type, division, format, leader, zonal, search]);
+  // the rows: the outlets passing the filters with sales in the chosen days
+  const rows = useMemo(() => passing
+    .map((r) => ({ r, now: sumDays(r.daily.this, chosen), last: sumDays(r.daily[cmp], chosen), tgt: r.target ? sumDays(r.target, chosen) : null }))
+    .filter(({ now, last }) => now.sales > 0 || last.sales > 0)
+    .sort((a, b) => b.now.sales - a.now.sales), [passing, chosen, cmp]);
 
   // the totals: with no outlet filter, the Category wise figures of this store group and type (the same totals as that tab);
   // otherwise the sum of the outlets shown
@@ -137,6 +144,32 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
   const useDaily = !division && !format && !leader && !zonal && !search;
   const total = useDaily ? dayNow : addSums(rows.map((x) => x.now));
   const totalLast = useDaily ? dayLast : addSums(rows.map((x) => x.last));
+
+  // the day-wise charts: each day of the month, from the Category wise figures when no outlet filter is set, otherwise
+  // from the outlets passing the filters (the whole month, not only the From-To days)
+  const dayFigures = data.days.map((_, i): { now: Sum; last: Sum } => {
+    if (useDaily) {
+      return {
+        now: { sales: T.sales[i] ?? 0, gpv: T.gpv[i] ?? 0, ff: T.ff[i] ?? 0, va: T.valueAdj[i] ?? 0 },
+        last: { sales: C.splySales[i] ?? 0, gpv: C.splyGpv[i] ?? 0, ff: C.splyFf[i] ?? 0, va: C.splyValueAdj[i] ?? 0 },
+      };
+    }
+    const now: Sum = { sales: 0, gpv: 0, ff: 0, va: 0 }, last: Sum = { sales: 0, gpv: 0, ff: 0, va: 0 };
+    for (const r of passing) {
+      const a = r.daily.this[i], b = r.daily[cmp][i];
+      now.sales += a[0]; now.gpv += a[1]; now.ff += a[2]; now.va += a[3];
+      last.sales += b[0]; last.gpv += b[1]; last.ff += b[2]; last.va += b[3];
+    }
+    return { now, last };
+  });
+  const ratioOf = (a: number, b: number) => (b ? a / b : null);
+  const seriesOf = (pick: (d: { now: Sum; last: Sum }) => [number | null, number | null]): DayPoint[] =>
+    data.days.map((day, i) => {
+      const [now, prev] = pick(dayFigures[i]);
+      return { date: day.date, sply: cmp === "sply" ? day.sply : day.splm, now, prev };
+    });
+  const chartBand = isLatest ? undefined : { from: lo, to: hi };
+  const chartTotalLabel = isLatest ? "Month to date" : lo === hi ? "Selected day" : "Selected period";
   const s = total.sales, sl = totalLast.sales;
   const g = total.gpv, gl = totalLast.gpv;
   const f = total.ff, fl = totalLast.ff;
@@ -283,6 +316,41 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
           {" "}Targets from {data.targetFile}
           {noTarget > 0 && `; ${noTarget} ${noTarget === 1 ? "outlet has" : "outlets have"} no target in it`}.
         </p>
+
+        <div className="day-chart-bar">
+          <div className="seg" role="group" aria-label="Chart data level">
+            <button type="button" aria-pressed={!growthMode} onClick={() => setView("values")}>Values</button>
+            <button type="button" aria-pressed={growthMode} onClick={() => setView("growth")}>Growth %</button>
+          </div>
+          <span className="day-chart-hint">
+            {growthMode
+              ? `Each day's growth against ${CMP_WORD[cmp]}; the grey line at 0% is ${short} itself.`
+              : `Each day's figures this month, and the same day ${CMP_WORD[cmp]}.`}
+          </span>
+        </div>
+        <div className="day-charts">
+          <DayLines title="Day wise sales" kind="money" points={seriesOf((d) => [d.now.sales, d.last.sales])}
+            total={{ now: s, prev: sl }} band={chartBand} totalLabel={chartTotalLabel} prevWord={CMP_WORD[cmp]} growthMode={growthMode} />
+          <div className="day-pair">
+            <DayLines title="Day wise GPV" kind="money" points={seriesOf((d) => [d.now.gpv, d.last.gpv])}
+              total={{ now: g, prev: gl }} band={chartBand} totalLabel={chartTotalLabel} prevWord={CMP_WORD[cmp]} growthMode={growthMode} />
+            <DayLines title="Day wise GPV+OI" kind="money" points={seriesOf((d) => [d.now.gpv + d.now.va, d.last.gpv + d.last.va])}
+              total={{ now: go, prev: gol }} band={chartBand} totalLabel={chartTotalLabel} prevWord={CMP_WORD[cmp]} growthMode={growthMode} />
+          </div>
+          <div className="day-pair">
+            <DayLines title="Day wise GP%" kind="pct" points={seriesOf((d) => [ratioOf(d.now.gpv, d.now.sales), ratioOf(d.last.gpv, d.last.sales)])}
+              total={{ now: gp, prev: gpl }} band={chartBand} totalLabel={chartTotalLabel} prevWord={CMP_WORD[cmp]} growthMode={growthMode} />
+            <DayLines title="Day wise GP+OI%" kind="pct"
+              points={seriesOf((d) => [ratioOf(d.now.gpv + d.now.va, d.now.sales), ratioOf(d.last.gpv + d.last.va, d.last.sales)])}
+              total={{ now: goi, prev: goil }} band={chartBand} totalLabel={chartTotalLabel} prevWord={CMP_WORD[cmp]} growthMode={growthMode} />
+          </div>
+          <div className="day-pair">
+            <DayLines title="Day wise footfall" kind="count" points={seriesOf((d) => [d.now.ff, d.last.ff])}
+              total={{ now: f, prev: fl }} band={chartBand} totalLabel={chartTotalLabel} prevWord={CMP_WORD[cmp]} growthMode={growthMode} />
+            <DayLines title="Day wise basket" kind="count" points={seriesOf((d) => [ratioOf(d.now.sales, d.now.ff), ratioOf(d.last.sales, d.last.ff)])}
+              total={{ now: bs, prev: bsl }} band={chartBand} totalLabel={chartTotalLabel} prevWord={CMP_WORD[cmp]} growthMode={growthMode} />
+          </div>
+        </div>
 
         <div className="ov-panel ov-table-panel">
           <div className="ov-table-scroll">
