@@ -139,7 +139,10 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
   // the totals: with no outlet filter, the Category wise figures of this store group and type (the same totals as that tab);
   // otherwise the sum of the outlets shown
   const key = storeKey(store, type);
-  const T = daily.groups[key].total, C = (cmp === "sply" ? daily.groups : daily.splmGroups)[key].total;
+  // the group of the chosen comparison: its THIS figures are the outlets in the same-store list of that comparison, and its
+  // comparison figures are the same period last year (SPLY) or last month (SPLM), as the Category wise tab reads them
+  const variant = cmp === "sply" ? daily.groups : daily.splmGroups;
+  const T = variant[key].total, C = T;
   const sumAt = (a: (number | null)[]) => chosen.reduce((t, i) => t + (a[i] ?? 0), 0);
   const dayNow: Sum = { sales: sumAt(T.sales), gpv: sumAt(T.gpv), ff: sumAt(T.ff), va: sumAt(T.valueAdj) };
   const dayLast: Sum = { sales: sumAt(C.splySales), gpv: sumAt(C.splyGpv), ff: sumAt(C.splyFf), va: sumAt(C.splyValueAdj) };
