@@ -21,7 +21,7 @@ export default function DayLines({ title, kind, points: rawPoints, total: rawTot
   totalLabel?: string;
   /** The comparison period in words: "last year" or "last month". */
   prevWord?: string;
-  /** Growth mode: each day's change against the comparison (GR%), drawn against a line at 0%, which is the comparison itself. */
+  /** Growth mode: each day's change against the comparison (GR%), as one line. */
   growthMode?: boolean;
 }) {
   const { show, hide, node } = useTooltip();
@@ -31,11 +31,11 @@ export default function DayLines({ title, kind, points: rawPoints, total: rawTot
   // the comparison's short name for the charts: SPLY (same period last year) or SPLM (same period last month)
   const short = prevWord === "last month" ? "SPLM" : "SPLY";
   const longName = prevWord === "last month" ? "same period last month" : "same period last year";
-  // growth mode: each day's change against the comparison (GR%), with a line at 0% for the comparison itself
+  // growth mode: one line, each day's change against the comparison (GR%)
   const points: DayPoint[] = growthMode
-    ? rawPoints.map((p) => ({ ...p, now: growth(p.now, p.prev) ?? null, prev: p.prev == null ? null : 0 }))
+    ? rawPoints.map((p) => ({ ...p, now: growth(p.now, p.prev) ?? null, prev: null }))
     : rawPoints;
-  const total = growthMode ? { now: growth(rawTotal.now, rawTotal.prev) ?? null, prev: 0 } : rawTotal;
+  const total = growthMode ? { now: growth(rawTotal.now, rawTotal.prev) ?? null, prev: null } : rawTotal;
   const valueFmt = (v: number) => (kind === "money" ? crFmt(v) : kind === "count" ? full(v) : pct(v, 2));
   const H = 240, top = 14, bottom = 26, left = 66, right = 14;
   const fmt = (v: number) => (growthMode ? signedPct(v, 2) : valueFmt(v));

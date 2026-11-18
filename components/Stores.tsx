@@ -324,7 +324,7 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
           </div>
           <span className="day-chart-hint">
             {growthMode
-              ? `Each day's growth against ${CMP_WORD[cmp]}; the grey line at 0% is ${short} itself.`
+              ? `Each day's growth against ${CMP_WORD[cmp]}.`
               : `Each day's figures this month, and the same day ${CMP_WORD[cmp]}.`}
           </span>
         </div>
