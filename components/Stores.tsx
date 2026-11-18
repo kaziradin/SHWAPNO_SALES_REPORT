@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { DailyData, OutletCatData, StoreRow, StoresData } from "@/lib/types";
-import { abbrOf, arrowOf, crOrDash, crSigned, full, growth, pct, signedPct, titleCase, toneOfNum } from "@/lib/format";
+import { arrowOf, crOrDash, crSigned, full, growth, pct, signedPct, titleCase, toneOfNum } from "@/lib/format";
 import { CMP_SHORT, CMP_WORD, type Cmp, dayLong, SHOWN_DIVISIONS, storeKey, type StoreGroup, type StoreType, uniqSorted } from "@/lib/daily";
 import DayLines, { type DayPoint } from "./DayLines";
 
@@ -133,8 +133,8 @@ const divisionRank = (division: string) => {
   return i >= 0 ? i : SHOWN_DIVISIONS.length;
 };
 
-/** A division's label: the code for the six main ones, as on the Category wise sheet, and the name for the others. */
-const divisionLabel = (division: string) => (SHOWN_DIVISIONS.includes(division) ? abbrOf(division) : titleCase(division));
+/** A division's label in the drill-down: its full name, for example Company Goods. */
+const divisionLabel = (division: string) => titleCase(division);
 
 /** The drill-down's division filter: "Others" stands for every division that is not one of the six main ones. */
 const OTHERS = "__others__";
