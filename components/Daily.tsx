@@ -118,6 +118,8 @@ export default function Daily({ daily }: { daily: DailyData }) {
   // the charts show the values (this month against the comparison), or each day's growth (GR%) against it
   const [view, setView] = useState<"values" | "growth">("values");
   const growthMode = view === "growth";
+  // the numbers printed on the chart points
+  const [labels, setLabels] = useState(true);
 
   // the detail rows are a separate data file; they give the CRP and category lists, the figures when either is chosen,
   // and the detail table
@@ -435,6 +437,10 @@ export default function Daily({ daily }: { daily: DailyData }) {
           <button type="button" aria-pressed={!growthMode} onClick={() => setView("values")}>Values</button>
           <button type="button" aria-pressed={growthMode} onClick={() => setView("growth")}>Growth %</button>
         </div>
+        <label className="day-chart-check">
+          <input type="checkbox" checked={labels} onChange={(e) => setLabels(e.target.checked)} />
+          Data labels
+        </label>
         <span className="day-chart-hint">
           {growthMode
             ? `Each day's growth against ${CMP_WORD[cmp]}.`
@@ -443,25 +449,25 @@ export default function Daily({ daily }: { daily: DailyData }) {
       </div>
       <div className="day-charts">
         <DayLines title="Day wise sales" kind="money" points={seriesOf(rows, (r) => [r.f.sales, r.f.splySales])}
-          total={{ now: shownF.sales, prev: shownF.splySales }} band={chartBand} totalLabel={chartTotalLabel} prevWord={CMP_WORD[cmp]} growthMode={growthMode} />
+          total={{ now: shownF.sales, prev: shownF.splySales }} band={chartBand} totalLabel={chartTotalLabel} prevWord={CMP_WORD[cmp]} growthMode={growthMode} showLabels={labels} />
         <div className="day-pair">
           <DayLines title="Day wise GPV" kind="money" points={seriesOf(rows, (r) => [r.f.gpv, r.f.splyGpv])}
-            total={{ now: shownF.gpv, prev: shownF.splyGpv }} band={chartBand} totalLabel={chartTotalLabel} prevWord={CMP_WORD[cmp]} growthMode={growthMode} />
+            total={{ now: shownF.gpv, prev: shownF.splyGpv }} band={chartBand} totalLabel={chartTotalLabel} prevWord={CMP_WORD[cmp]} growthMode={growthMode} showLabels={labels} />
           <DayLines title="Day wise GPV+OI" kind="money" points={seriesOf(rows, (r) => [r.f.gpvOi, r.f.splyGpvOi])}
-            total={{ now: shownF.gpvOi, prev: shownF.splyGpvOi }} band={chartBand} totalLabel={chartTotalLabel} prevWord={CMP_WORD[cmp]} growthMode={growthMode} />
+            total={{ now: shownF.gpvOi, prev: shownF.splyGpvOi }} band={chartBand} totalLabel={chartTotalLabel} prevWord={CMP_WORD[cmp]} growthMode={growthMode} showLabels={labels} />
         </div>
         <div className="day-pair">
           <DayLines title="Day wise GP%" kind="pct" points={seriesOf(rows, (r) => [r.x.gp, r.x.splyGp])}
-            total={{ now: shownX.gp, prev: shownX.splyGp }} band={chartBand} totalLabel={chartTotalLabel} prevWord={CMP_WORD[cmp]} growthMode={growthMode} />
+            total={{ now: shownX.gp, prev: shownX.splyGp }} band={chartBand} totalLabel={chartTotalLabel} prevWord={CMP_WORD[cmp]} growthMode={growthMode} showLabels={labels} />
           <DayLines title="Day wise GP+OI%" kind="pct" points={seriesOf(rows, (r) => [r.x.goi, r.x.splyGoi])}
-            total={{ now: shownX.goi, prev: shownX.splyGoi }} band={chartBand} totalLabel={chartTotalLabel} prevWord={CMP_WORD[cmp]} growthMode={growthMode} />
+            total={{ now: shownX.goi, prev: shownX.splyGoi }} band={chartBand} totalLabel={chartTotalLabel} prevWord={CMP_WORD[cmp]} growthMode={growthMode} showLabels={labels} />
         </div>
         {ffShown && (
           <div className="day-pair">
             <DayLines title="Day wise footfall" kind="count" points={seriesOf(rows, (r) => [r.f.ff, r.f.splyFf])}
-              total={{ now: shownF.ff, prev: shownF.splyFf }} band={chartBand} totalLabel={chartTotalLabel} prevWord={CMP_WORD[cmp]} growthMode={growthMode} />
+              total={{ now: shownF.ff, prev: shownF.splyFf }} band={chartBand} totalLabel={chartTotalLabel} prevWord={CMP_WORD[cmp]} growthMode={growthMode} showLabels={labels} />
             <DayLines title="Day wise basket" kind="count" points={seriesOf(rows, (r) => [r.x.bs, r.x.splyBs])}
-              total={{ now: shownX.bs, prev: shownX.splyBs }} band={chartBand} totalLabel={chartTotalLabel} prevWord={CMP_WORD[cmp]} growthMode={growthMode} />
+              total={{ now: shownX.bs, prev: shownX.splyBs }} band={chartBand} totalLabel={chartTotalLabel} prevWord={CMP_WORD[cmp]} growthMode={growthMode} showLabels={labels} />
           </div>
         )}
       </div>

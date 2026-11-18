@@ -13,7 +13,7 @@ const markedDay = (iso: string) => [4, 5, 6].includes(new Date(`${iso}T00:00:00`
 /** One line per series, one point per day: this month (navy) against the same day last year (grey).
  *  Money is in crore, ratios in percent, counts (footfall, basket) as whole numbers. Move the pointer anywhere over the chart
  *  to read that day's figures. */
-export default function DayLines({ title, kind, points: rawPoints, total: rawTotal, band, totalLabel = "Month to date", prevWord = "last year", growthMode = false }: {
+export default function DayLines({ title, kind, points: rawPoints, total: rawTotal, band, totalLabel = "Month to date", prevWord = "last year", growthMode = false, showLabels = true }: {
   title: string; kind: "money" | "pct" | "count"; points: DayPoint[]; total: { now: number | null; prev: number | null };
   /** The days chosen in the Period list (one day or a date range), marked with a band. */
   band?: { from: string; to: string };
@@ -23,6 +23,8 @@ export default function DayLines({ title, kind, points: rawPoints, total: rawTot
   prevWord?: string;
   /** Growth mode: each day's change against the comparison (GR%), as one line. */
   growthMode?: boolean;
+  /** The numbers printed on the points; off hides them, the lines stay. */
+  showLabels?: boolean;
 }) {
   const { show, hide, node } = useTooltip();
   const { ref, w } = useWidth(560);
@@ -172,7 +174,7 @@ export default function DayLines({ title, kind, points: rawPoints, total: rawTot
               )}
             </g>
           ))}
-          {valueLabels.map((l) => (
+          {showLabels && valueLabels.map((l) => (
             <text key={l.key} x={l.x} y={l.y} textAnchor="middle" pointerEvents="none"
               fontSize={l.now ? 10.5 : 10} fontWeight={l.now ? 600 : 400} style={{ fill: l.now ? "var(--this)" : "#6b7a90" }}>
               {l.text}
