@@ -730,9 +730,15 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
                   <SortTh k="salesNow" label="Sales this" cls={`${TINT.Sales} grp-start`} {...head} />
                   <SortTh k="salesLast" label={`Sales ${short}`} cls={TINT.Sales} {...head} />
                   <SortTh k="salesGr" label="GR%" cls={TINT.Sales} {...head} />
+                  <SortTh k="tgtSales" label="Sales TGT" cls={`${TINT.Sales} grp-start`} {...head} />
+                  <SortTh k="tgtSalesAch" label="ACH %" cls={TINT.Sales} {...head} />
+                  <SortTh k="tgtSalesGap" label="Gap" cls={TINT.Sales} {...head} />
                   <SortTh k="gpvNow" label="GPV this" cls={`${TINT.GPV} grp-start`} {...head} />
                   <SortTh k="gpvLast" label={`GPV ${short}`} cls={TINT.GPV} {...head} />
                   <SortTh k="gpvGr" label="GR%" cls={TINT.GPV} {...head} />
+                  <SortTh k="tgtGpv" label="GPV TGT" cls={`${TINT.GPV} grp-start`} {...head} />
+                  <SortTh k="tgtGpvAch" label="ACH %" cls={TINT.GPV} {...head} />
+                  <SortTh k="tgtGpvGap" label="Gap" cls={TINT.GPV} {...head} />
                   <SortTh k="goNow" label="GPV+OI this" cls={`${TINT["GPV+OI"]} grp-start`} {...head} />
                   <SortTh k="goLast" label={`GPV+OI ${short}`} cls={TINT["GPV+OI"]} {...head} />
                   <SortTh k="goGr" label="GR%" cls={TINT["GPV+OI"]} {...head} />
@@ -745,19 +751,13 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
                   <SortTh k="ffNow" label="Footfall this" cls={`${TINT.Footfall} grp-start`} {...head} />
                   <SortTh k="ffLast" label={`Footfall ${short}`} cls={TINT.Footfall} {...head} />
                   <SortTh k="ffGr" label="GR%" cls={TINT.Footfall} {...head} />
+                  <SortTh k="tgtFf" label="FF TGT" cls={`${TINT.Footfall} grp-start`} {...head} />
+                  <SortTh k="tgtFfAch" label="ACH %" cls={TINT.Footfall} {...head} />
+                  <SortTh k="tgtFfGap" label="Gap" cls={TINT.Footfall} {...head} />
                   <SortTh k="bsNow" label="Basket this" cls={`${TINT.Basket} grp-start`} {...head} />
                   <SortTh k="bsLast" label={`Basket ${short}`} cls={TINT.Basket} {...head} />
                   <SortTh k="bsGr" label="GR%" cls={TINT.Basket} {...head} />
-                  <SortTh k="tgtSales" label="Sales TGT" cls={`${TINT.Sales} grp-start`} {...head} />
-                  <SortTh k="tgtSalesAch" label="ACH %" cls={TINT.Sales} {...head} />
-                  <SortTh k="tgtSalesGap" label="Gap" cls={TINT.Sales} {...head} />
-                  <SortTh k="tgtGpv" label="GPV TGT" cls={TINT.GPV} {...head} />
-                  <SortTh k="tgtGpvAch" label="ACH %" cls={TINT.GPV} {...head} />
-                  <SortTh k="tgtGpvGap" label="Gap" cls={TINT.GPV} {...head} />
-                  <SortTh k="tgtFf" label="FF TGT" cls={TINT.Footfall} {...head} />
-                  <SortTh k="tgtFfAch" label="ACH %" cls={TINT.Footfall} {...head} />
-                  <SortTh k="tgtFfGap" label="Gap" cls={TINT.Footfall} {...head} />
-                  <SortTh k="tgtBs" label="BS TGT" cls={TINT.Basket} {...head} />
+                  <SortTh k="tgtBs" label="BS TGT" cls={`${TINT.Basket} grp-start`} {...head} />
                   <SortTh k="tgtBsAch" label="ACH %" cls={TINT.Basket} {...head} />
                   <SortTh k="tgtBsGap" label="Gap" cls={TINT.Basket} {...head} />
                 </tr>
@@ -774,16 +774,16 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
                       <td className="l">{r.division ? titleCase(r.division) : "–"}</td>
                       <td className="l">{r.status}</td>
                       <Metric now={now.sales} last={last.sales} kind="money" tint={TINT.Sales} label="Sales" />
+                      <TargetTriple tgt={fg.tgtSales} ach={fg.tgtSalesAch} gap={fg.tgtSalesGap} kind="money" tint={TINT.Sales} start />
                       <Metric now={now.gpv} last={last.gpv} kind="money" tint={TINT.GPV} label="GPV" />
+                      <TargetTriple tgt={fg.tgtGpv} ach={fg.tgtGpvAch} gap={fg.tgtGpvGap} kind="money" tint={TINT.GPV} start />
                       <Metric now={fg.goNow} last={fg.goLast} kind="money" tint={TINT["GPV+OI"]} label="GPV+OI" />
                       <Metric now={fg.gpNow} last={fg.gpLast} kind="ratio" tint={TINT["GP%"]} label="GP%" />
                       <Metric now={fg.goiNow} last={fg.goiLast} kind="ratio" tint={TINT["GP+OI%"]} label="GP+OI%" />
                       <Metric now={now.ff} last={last.ff} kind="count" tint={TINT.Footfall} label="Footfall" />
+                      <TargetTriple tgt={fg.tgtFf} ach={fg.tgtFfAch} gap={fg.tgtFfGap} kind="count" tint={TINT.Footfall} start />
                       <Metric now={fg.bsNow} last={fg.bsLast} kind="count" tint={TINT.Basket} label="Basket" />
-                      <TargetTriple tgt={fg.tgtSales} ach={fg.tgtSalesAch} gap={fg.tgtSalesGap} kind="money" tint={TINT.Sales} start />
-                      <TargetTriple tgt={fg.tgtGpv} ach={fg.tgtGpvAch} gap={fg.tgtGpvGap} kind="money" tint={TINT.GPV} />
-                      <TargetTriple tgt={fg.tgtFf} ach={fg.tgtFfAch} gap={fg.tgtFfGap} kind="count" tint={TINT.Footfall} />
-                      <TargetTriple tgt={fg.tgtBs} ach={fg.tgtBsAch} gap={fg.tgtBsGap} kind="count" tint={TINT.Basket} />
+                      <TargetTriple tgt={fg.tgtBs} ach={fg.tgtBsAch} gap={fg.tgtBsGap} kind="count" tint={TINT.Basket} start />
                     </tr>
                   );
                 })}
@@ -793,16 +793,16 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
                   <tr>
                     <th scope="row" colSpan={4} className="l">Total · {rows.length} {rows.length === 1 ? "outlet" : "outlets"}</th>
                     <Metric now={s} last={sl} kind="money" tint={TINT.Sales} label="Sales" />
+                    <TargetTriple tgt={ts} ach={achSalesPct} gap={ts != null ? achOf.sales - ts : null} kind="money" tint={TINT.Sales} start />
                     <Metric now={g} last={gl} kind="money" tint={TINT.GPV} label="GPV" />
+                    <TargetTriple tgt={tg} ach={achGpvPct} gap={tg != null ? achOf.gpv - tg : null} kind="money" tint={TINT.GPV} start />
                     <Metric now={go} last={gol} kind="money" tint={TINT["GPV+OI"]} label="GPV+OI" />
                     <Metric now={gp} last={gpl} kind="ratio" tint={TINT["GP%"]} label="GP%" />
                     <Metric now={goi} last={goil} kind="ratio" tint={TINT["GP+OI%"]} label="GP+OI%" />
                     <Metric now={f} last={fl} kind="count" tint={TINT.Footfall} label="Footfall" />
+                    <TargetTriple tgt={tf} ach={achFfPct} gap={tf != null ? achOf.ff - tf : null} kind="count" tint={TINT.Footfall} start />
                     <Metric now={bs} last={bsl} kind="count" tint={TINT.Basket} label="Basket" />
-                    <TargetTriple tgt={ts} ach={achSalesPct} gap={ts != null ? achOf.sales - ts : null} kind="money" tint={TINT.Sales} start />
-                    <TargetTriple tgt={tg} ach={achGpvPct} gap={tg != null ? achOf.gpv - tg : null} kind="money" tint={TINT.GPV} />
-                    <TargetTriple tgt={tf} ach={achFfPct} gap={tf != null ? achOf.ff - tf : null} kind="count" tint={TINT.Footfall} />
-                    <TargetTriple tgt={tb} ach={achBsPct} gap={tb != null && achOf.ff ? achOf.sales / achOf.ff - tb : null} kind="count" tint={TINT.Basket} />
+                    <TargetTriple tgt={tb} ach={achBsPct} gap={tb != null && achOf.ff ? achOf.sales / achOf.ff - tb : null} kind="count" tint={TINT.Basket} start />
                   </tr>
                 </tfoot>
               )}
