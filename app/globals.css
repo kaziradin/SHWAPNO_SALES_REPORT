@@ -556,6 +556,10 @@ td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .drill-tools select { min-width: 180px; }
 .drill-tools .drill-export { margin-left: auto; }
 .drill-tools .drill-export:disabled { opacity: 0.5; cursor: default; }
+/* the store table's total row stays at the foot of the table, bold, as on the Category wise sheet; the tint of each
+   measure's cells comes from the .tinted rules */
+.ov-table.stores-table tfoot th, .ov-table.stores-table tfoot td { position: sticky; bottom: 0; font-weight: 600; border-top: 1px solid var(--ov-border); z-index: 2; }
+.ov-table.stores-table tfoot th { background: #EEF3FB; left: 0; z-index: 4; }
 /* the store table's Export CSV link, above the table at the right */
 .table-tools { display: flex; justify-content: flex-end; padding: 6px 4px 8px; }
 .table-tools button:disabled { opacity: 0.5; cursor: default; }
