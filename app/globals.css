@@ -364,6 +364,18 @@ td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .day-chart-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 10px; }
 .day-chart-hint { font-size: 12px; color: var(--ov-ink2); }
 .day-chart-check { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--ov-ink2); cursor: pointer; }
+/* On a dark screen (a phone or a computer in dark mode) the notes, the chart hint and the section headings sit on the dark
+   page, so they are white; the panels keep their own colours */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .ov-note,
+  :root:not([data-theme="light"]) .day-chart-hint,
+  :root:not([data-theme="light"]) .ov-section-head h2 { color: #ffffff; }
+  :root:not([data-theme="light"]) .ov-section-head { border-bottom-color: #ffffff; }
+}
+:root[data-theme="dark"] .ov-note,
+:root[data-theme="dark"] .day-chart-hint,
+:root[data-theme="dark"] .ov-section-head h2 { color: #ffffff; }
+:root[data-theme="dark"] .ov-section-head { border-bottom-color: #ffffff; }
 /* Two lines on a wide screen: Sales, GP% and GP+OI% (3 cards), then GPV, GPV+OI, Footfall and Basket (4 cards) */
 @media (min-width: 901px) {
   .day-kpis { grid-template-columns: repeat(12, minmax(0, 1fr)); }
