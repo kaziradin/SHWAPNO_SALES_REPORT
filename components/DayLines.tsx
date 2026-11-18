@@ -138,10 +138,7 @@ export default function DayLines({ title, kind, points: rawPoints, total: rawTot
         </span>
         <span className="day-legend">
           {growthMode ? (
-            <>
-              <span><i className="sw sw-this" />GR% vs {short}</span>
-              <span><i className="sw sw-last" />0% = {short} level</span>
-            </>
+            <span><i className="sw sw-this" />GR% vs {short}</span>
           ) : (
             <>
               <span><i className="sw sw-this" />This month</span>
