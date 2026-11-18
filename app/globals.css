@@ -573,7 +573,11 @@ td.name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
 .ov-table.stores-table tfoot th, .ov-table.stores-table tfoot td { position: sticky; bottom: 0; font-weight: 600; border-top: 1px solid var(--ov-border); z-index: 2; }
 .ov-table.stores-table tfoot th { background: #EEF3FB; left: 0; z-index: 4; }
 /* the store table's Export CSV link, above the table at the right */
-.table-tools { display: flex; justify-content: flex-end; padding: 6px 4px 8px; }
+.table-tools { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 6px 4px 8px; }
+.table-tools-detail { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.table-tools-label { font-size: 12px; font-weight: 600; color: var(--ov-ink2); }
+/* a group's name in the store table is wider than an outlet code, so it gets the room of the outlet column */
+.ov-table.stores-table th.grp-label, .ov-table.stores-table td.grp-label { width: 220px; min-width: 220px; max-width: 220px; }
 .table-tools button:disabled { opacity: 0.5; cursor: default; }
 .day-rows-table tfoot td.tint-green { background: #D9EFE1; }
 .day-rows-table tfoot td.tint-amber { background: #F6E6C8; }

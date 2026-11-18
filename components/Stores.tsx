@@ -25,7 +25,7 @@ const TINT: Record<string, string> = {
 type Sum = { sales: number; gpv: number; ff: number; va: number };
 
 /** One outlet in the table: its details, its figures this month and for the comparison, and its target. */
-type Row = { r: StoreRow; now: Sum; last: Sum; tgt: Sum | null };
+type Row = { r: StoreRow; now: Sum; last: Sum; tgt: Sum | null; count?: number; tgtNow?: Sum };
 
 /** Sums the chosen days. A day is [sales, GPV, footfall] and, for the actuals, value adj (OI) as the fourth figure. */
 const sumDays = (days: number[][], idx: number[]): Sum => {
@@ -43,7 +43,10 @@ const addSums = (rows: Sum[]): Sum =>
     { sales: 0, gpv: 0, ff: 0, va: 0 });
 
 /** The figures of one row that the table shows, and that a column sorts by. Each is null where it cannot be worked out. */
-const figuresOf = ({ now, last, tgt }: Row) => {
+const figuresOf = ({ now, last, tgt, tgtNow, count }: Row) => {
+  // the figures of the outlets that have a target, for the achievement and the gap (a group's own now is all its outlets)
+  const an = tgtNow ?? now;
+  const anBs = an.ff ? an.sales / an.ff : null;
   const ratio = (a: number, b: number) => (b ? a / b : null);
   const diff = (a: number | null, b: number | null) => (a != null && b != null ? a - b : null);
   const gpNow = ratio(now.gpv, now.sales), gpLast = ratio(last.gpv, last.sales);
@@ -60,10 +63,11 @@ const figuresOf = ({ now, last, tgt }: Row) => {
     ffNow: now.ff, ffLast: last.ff, ffGr: growth(now.ff, last.ff),
     bsNow, bsLast, bsGr: growth(bsNow, bsLast),
     // each target: the target, this month's figure against it (ACH), and the gap (this month less the target)
-    tgtSales: tgt ? tgt.sales : null, tgtSalesAch: tgt ? ratio(now.sales, tgt.sales) : null, tgtSalesGap: tgt ? now.sales - tgt.sales : null,
-    tgtGpv: tgt ? tgt.gpv : null, tgtGpvAch: tgt ? ratio(now.gpv, tgt.gpv) : null, tgtGpvGap: tgt ? now.gpv - tgt.gpv : null,
-    tgtFf: tgt ? tgt.ff : null, tgtFfAch: tgt ? ratio(now.ff, tgt.ff) : null, tgtFfGap: tgt ? now.ff - tgt.ff : null,
-    tgtBs, tgtBsAch: bsNow != null && tgtBs ? bsNow / tgtBs : null, tgtBsGap: bsNow != null && tgtBs != null ? bsNow - tgtBs : null,
+    tgtSales: tgt ? tgt.sales : null, tgtSalesAch: tgt ? ratio(an.sales, tgt.sales) : null, tgtSalesGap: tgt ? an.sales - tgt.sales : null,
+    tgtGpv: tgt ? tgt.gpv : null, tgtGpvAch: tgt ? ratio(an.gpv, tgt.gpv) : null, tgtGpvGap: tgt ? an.gpv - tgt.gpv : null,
+    tgtFf: tgt ? tgt.ff : null, tgtFfAch: tgt ? ratio(an.ff, tgt.ff) : null, tgtFfGap: tgt ? an.ff - tgt.ff : null,
+    tgtBs, tgtBsAch: anBs != null && tgtBs ? anBs / tgtBs : null, tgtBsGap: anBs != null && tgtBs != null ? anBs - tgtBs : null,
+    outletCount: count ?? null,
   };
 };
 type NumKey = keyof ReturnType<typeof figuresOf>;
@@ -78,6 +82,47 @@ const sortValueOf = (x: Row, key: SortKey): number | string | null => {
   if (key === "division") return x.r.division;
   if (key === "status") return x.r.status;
   return figuresOf(x)[key as NumKey];
+};
+
+/** How the store table is grouped: one line per outlet (the default), or one line per own or franchise status, format,
+ *  division, zonal manager or leader. */
+type Detail = "outlet" | "status" | "format" | "division" | "zonal" | "leader";
+const DETAILS: { key: Detail; label: string; header: string }[] = [
+  { key: "outlet", label: "Outlet", header: "Outlet" },
+  { key: "status", label: "Own / Fran", header: "Own / Fran" },
+  { key: "format", label: "Format", header: "Format" },
+  { key: "division", label: "Division", header: "Division" },
+  { key: "zonal", label: "Zonal", header: "Zonal" },
+  { key: "leader", label: "Leader", header: "Leader" },
+];
+
+/** The outlet rows grouped by one detail: each group adds up its outlets' figures, and its targets (the outlets that have one). */
+const groupRowsOf = (rows: Row[], d: Detail): Row[] => {
+  const groups = new Map<string, { label: string; sample: StoreRow; now: Sum[]; last: Sum[]; tgt: Sum[]; tgtNow: Sum[]; count: number }>();
+  for (const x of rows) {
+    const raw = d === "status" ? x.r.status : d === "format" ? x.r.format : d === "division" ? x.r.division : d === "zonal" ? x.r.zonal : x.r.leader;
+    const label = raw ? (d === "division" ? titleCase(raw) : raw) : "–";
+    let g = groups.get(label);
+    if (!g) {
+      g = { label, sample: x.r, now: [], last: [], tgt: [], tgtNow: [], count: 0 };
+      groups.set(label, g);
+    }
+    g.now.push(x.now);
+    g.last.push(x.last);
+    g.count += 1;
+    if (x.tgt) {
+      g.tgt.push(x.tgt);
+      g.tgtNow.push(x.now);
+    }
+  }
+  return [...groups.values()].map((g) => ({
+    r: { ...g.sample, code: g.label, name: g.label } as StoreRow,
+    now: addSums(g.now),
+    last: addSums(g.last),
+    tgt: g.tgt.length ? addSums(g.tgt) : null,
+    tgtNow: g.tgt.length ? addSums(g.tgtNow) : undefined,
+    count: g.count,
+  }));
 };
 
 /** One measure's three cells: this period, the comparison, and the change (a growth for money and counts, points for ratios). */
@@ -387,6 +432,8 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
   // the table's sort: the column, and its direction (the default is sales this month, highest first)
   const [sortKey, setSortKey] = useState<SortKey>("salesNow");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  // the store table's lines: one per outlet (the default), or one per group of the chosen detail
+  const [detail, setDetail] = useState<Detail>("outlet");
   // the day-wise charts show the values (this month against the comparison), or each day's growth (GR%) against it
   const [view, setView] = useState<"values" | "growth">("values");
   const growthMode = view === "growth";
@@ -447,13 +494,20 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
   const rows: Row[] = useMemo(() => passing
     .map((r) => ({ r, now: sumDays(r.daily.this, chosen), last: sumDays(r.daily[cmp], chosen), tgt: r.target ? sumDays(r.target, chosen) : null }))
     .filter(({ now, last }) => now.sales > 0 || last.sales > 0), [passing, chosen, cmp]);
-  const sortedRows = useMemo(() => [...rows].sort((a, b) => {
+  const groupRows = useMemo(() => (detail === "outlet" ? [] : groupRowsOf(rows, detail)), [rows, detail]);
+  const sortedRows = useMemo(() => [...(detail === "outlet" ? rows : groupRows)].sort((a, b) => {
     const va = sortValueOf(a, sortKey), vb = sortValueOf(b, sortKey);
     // a blank always sorts last, whichever way the column is ordered
     if (va == null || vb == null) return va == null && vb == null ? 0 : va == null ? 1 : -1;
     const c = typeof va === "string" ? va.localeCompare(String(vb)) : va - (vb as number);
     return sortDir === "asc" ? c : -c;
-  }), [rows, sortKey, sortDir]);
+  }), [rows, groupRows, detail, sortKey, sortDir]);
+  // choosing a detail starts the table again from the sales of this month, highest first
+  const onDetail = (d: Detail) => {
+    setDetail(d);
+    setSortKey("salesNow");
+    setSortDir("desc");
+  };
   const onSort = (k: SortKey) => {
     if (k === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     else {
@@ -717,16 +771,33 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
 
         <div className="ov-panel ov-table-panel">
           <div className="table-tools">
+            <div className="table-tools-detail" role="group" aria-label="Store detail">
+              <span className="table-tools-label">Store detail</span>
+              <div className="seg">
+                {DETAILS.map((x) => (
+                  <button key={x.key} type="button" aria-pressed={detail === x.key} onClick={() => onDetail(x.key)}>{x.label}</button>
+                ))}
+              </div>
+            </div>
             <button type="button" className="linkish" onClick={exportTable} disabled={rows.length === 0}>Export CSV</button>
           </div>
           <div className="ov-table-scroll">
             <table ref={tableRef} className="ov-table stores-table tinted">
               <thead>
                 <tr>
-                  <SortTh k="code" label="Code" cls="l st-c1" {...head} />
-                  <SortTh k="name" label="Outlet" cls="l st-c2" {...head} />
-                  <SortTh k="division" label="Area" cls="l" {...head} />
-                  <SortTh k="status" label="Status" cls="l" {...head} />
+                  {detail === "outlet" ? (
+                    <>
+                      <SortTh k="code" label="Code" cls="l st-c1" {...head} />
+                      <SortTh k="name" label="Outlet" cls="l st-c2" {...head} />
+                      <SortTh k="division" label="Area" cls="l" {...head} />
+                      <SortTh k="status" label="Status" cls="l" {...head} />
+                    </>
+                  ) : (
+                    <>
+                      <SortTh k="code" label={DETAILS.find((x) => x.key === detail)?.header ?? ""} cls="l st-c1 grp-label" {...head} />
+                      <SortTh k="outletCount" label="Outlets" cls="l" {...head} />
+                    </>
+                  )}
                   <SortTh k="salesNow" label="Sales this" cls={`${TINT.Sales} grp-start`} {...head} />
                   <SortTh k="salesLast" label={`Sales ${short}`} cls={TINT.Sales} {...head} />
                   <SortTh k="salesGr" label="GR%" cls={TINT.Sales} {...head} />
@@ -763,16 +834,25 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
                 </tr>
               </thead>
               <tbody>
-                {sortedRows.map(({ r, now, last, tgt }) => {
-                  const fg = figuresOf({ r, now, last, tgt });
+                {sortedRows.map(({ r, now, last, tgt, tgtNow, count }) => {
+                  const fg = figuresOf({ r, now, last, tgt, tgtNow, count });
                   return (
                     <tr key={r.code}>
-                      <td className="l st-c1"><button type="button" className="outlet-link" onClick={() => openDrill(r.code, r.name)}>{r.code}</button></td>
-                      <td className="l st-c2" title={r.name}>
-                        <button type="button" className="outlet-link" onClick={() => openDrill(r.code, r.name)}>{r.name}</button>
-                      </td>
-                      <td className="l">{r.division ? titleCase(r.division) : "–"}</td>
-                      <td className="l">{r.status}</td>
+                      {detail === "outlet" ? (
+                        <>
+                          <td className="l st-c1"><button type="button" className="outlet-link" onClick={() => openDrill(r.code, r.name)}>{r.code}</button></td>
+                          <td className="l st-c2" title={r.name}>
+                            <button type="button" className="outlet-link" onClick={() => openDrill(r.code, r.name)}>{r.name}</button>
+                          </td>
+                          <td className="l">{r.division ? titleCase(r.division) : "–"}</td>
+                          <td className="l">{r.status}</td>
+                        </>
+                      ) : (
+                        <>
+                          <td className="l st-c1 grp-label">{r.code}</td>
+                          <td className="l">{count ?? 0}</td>
+                        </>
+                      )}
                       <Metric now={now.sales} last={last.sales} kind="money" tint={TINT.Sales} label="Sales" />
                       <TargetTriple tgt={fg.tgtSales} ach={fg.tgtSalesAch} gap={fg.tgtSalesGap} kind="money" tint={TINT.Sales} start />
                       <Metric now={now.gpv} last={last.gpv} kind="money" tint={TINT.GPV} label="GPV" />
@@ -791,7 +871,7 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
               {rows.length > 0 && (
                 <tfoot>
                   <tr>
-                    <th scope="row" colSpan={4} className="l">Total · {rows.length} {rows.length === 1 ? "outlet" : "outlets"}</th>
+                    <th scope="row" colSpan={detail === "outlet" ? 4 : 2} className="l">Total · {rows.length} {rows.length === 1 ? "outlet" : "outlets"}</th>
                     <Metric now={s} last={sl} kind="money" tint={TINT.Sales} label="Sales" />
                     <TargetTriple tgt={ts} ach={achSalesPct} gap={ts != null ? achOf.sales - ts : null} kind="money" tint={TINT.Sales} start />
                     <Metric now={g} last={gl} kind="money" tint={TINT.GPV} label="GPV" />
