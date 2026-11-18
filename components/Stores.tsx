@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { DailyData, StoreRow, StoresData } from "@/lib/types";
-import { arrowOf, crOrDash, full, growth, pct, signedPct, titleCase, toneOfNum } from "@/lib/format";
+import { arrowOf, crOrDash, crSigned, full, growth, pct, signedPct, titleCase, toneOfNum } from "@/lib/format";
 import { CMP_SHORT, CMP_WORD, type Cmp, dayLong, storeKey, type StoreGroup, type StoreType, uniqSorted } from "@/lib/daily";
 import DayLines, { type DayPoint } from "./DayLines";
 
@@ -49,6 +49,8 @@ const figuresOf = ({ now, last, tgt }: Row) => {
   const gpNow = ratio(now.gpv, now.sales), gpLast = ratio(last.gpv, last.sales);
   const goiNow = ratio(now.gpv + now.va, now.sales), goiLast = ratio(last.gpv + last.va, last.sales);
   const bsNow = ratio(now.sales, now.ff), bsLast = ratio(last.sales, last.ff);
+  // the basket target: the target sales over the target footfall
+  const tgtBs = tgt && tgt.ff ? tgt.sales / tgt.ff : null;
   return {
     salesNow: now.sales, salesLast: last.sales, salesGr: growth(now.sales, last.sales),
     gpvNow: now.gpv, gpvLast: last.gpv, gpvGr: growth(now.gpv, last.gpv),
@@ -57,8 +59,11 @@ const figuresOf = ({ now, last, tgt }: Row) => {
     goiNow, goiLast, goiDiff: diff(goiNow, goiLast),
     ffNow: now.ff, ffLast: last.ff, ffGr: growth(now.ff, last.ff),
     bsNow, bsLast, bsGr: growth(bsNow, bsLast),
-    tgtSales: tgt ? tgt.sales : null, tgtGpv: tgt ? tgt.gpv : null, tgtFf: tgt ? tgt.ff : null,
-    tgtBs: tgt && tgt.ff ? tgt.sales / tgt.ff : null,
+    // each target: the target, this month's figure against it (ACH), and the gap (this month less the target)
+    tgtSales: tgt ? tgt.sales : null, tgtSalesAch: tgt ? ratio(now.sales, tgt.sales) : null, tgtSalesGap: tgt ? now.sales - tgt.sales : null,
+    tgtGpv: tgt ? tgt.gpv : null, tgtGpvAch: tgt ? ratio(now.gpv, tgt.gpv) : null, tgtGpvGap: tgt ? now.gpv - tgt.gpv : null,
+    tgtFf: tgt ? tgt.ff : null, tgtFfAch: tgt ? ratio(now.ff, tgt.ff) : null, tgtFfGap: tgt ? now.ff - tgt.ff : null,
+    tgtBs, tgtBsAch: bsNow != null && tgtBs ? bsNow / tgtBs : null, tgtBsGap: bsNow != null && tgtBs != null ? bsNow - tgtBs : null,
   };
 };
 type NumKey = keyof ReturnType<typeof figuresOf>;
@@ -89,10 +94,20 @@ function Metric({ now, last, kind, tint, label }: { now: number | null; last: nu
   );
 }
 
-/** One target figure: a money amount in crore, or a count as a plain figure. */
-function TargetCell({ v, kind, tint, start }: { v: number | null; kind: "money" | "count"; tint: string; start?: boolean }) {
-  const text = v == null ? "–" : kind === "money" ? crOrDash(v) : full(v);
-  return <td className={start ? `${tint} grp-start` : tint}>{text}</td>;
+/** A target's three cells: the target, the achievement (ACH: this month against the target), and the gap (this month less
+ *  the target). Money is in crore (the gap in lakh below one crore); counts are plain figures. */
+function TargetTriple({ tgt, ach, gap, kind, tint, start }: {
+  tgt: number | null; ach: number | null; gap: number | null; kind: "money" | "count"; tint: string; start?: boolean;
+}) {
+  const shownTgt = tgt == null ? "–" : kind === "money" ? crOrDash(tgt) : full(tgt);
+  const shownGap = gap == null ? "–" : kind === "money" ? crSigned(gap) : `${gap < 0 ? "−" : "+"}${full(Math.abs(gap))}`;
+  return (
+    <>
+      <td className={start ? `${tint} grp-start` : tint}>{shownTgt}</td>
+      <td className={tint}>{ach == null ? "–" : pct(ach, 2)}</td>
+      <td className={tint}><span className={`delta ${toneOfNum(gap)}`}>{shownGap}</span></td>
+    </>
+  );
 }
 
 /** A column header that sorts the table by its column. Clicking the active column again reverses the order. */
@@ -460,9 +475,17 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
                   <SortTh k="bsLast" label={`Basket ${short}`} cls={TINT.Basket} {...head} />
                   <SortTh k="bsGr" label="GR%" cls={TINT.Basket} {...head} />
                   <SortTh k="tgtSales" label="Sales TGT" cls={`${TINT.Sales} grp-start`} {...head} />
+                  <SortTh k="tgtSalesAch" label="ACH %" cls={TINT.Sales} {...head} />
+                  <SortTh k="tgtSalesGap" label="Gap" cls={TINT.Sales} {...head} />
                   <SortTh k="tgtGpv" label="GPV TGT" cls={TINT.GPV} {...head} />
+                  <SortTh k="tgtGpvAch" label="ACH %" cls={TINT.GPV} {...head} />
+                  <SortTh k="tgtGpvGap" label="Gap" cls={TINT.GPV} {...head} />
                   <SortTh k="tgtFf" label="FF TGT" cls={TINT.Footfall} {...head} />
+                  <SortTh k="tgtFfAch" label="ACH %" cls={TINT.Footfall} {...head} />
+                  <SortTh k="tgtFfGap" label="Gap" cls={TINT.Footfall} {...head} />
                   <SortTh k="tgtBs" label="BS TGT" cls={TINT.Basket} {...head} />
+                  <SortTh k="tgtBsAch" label="ACH %" cls={TINT.Basket} {...head} />
+                  <SortTh k="tgtBsGap" label="Gap" cls={TINT.Basket} {...head} />
                 </tr>
               </thead>
               <tbody>
@@ -481,10 +504,10 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
                       <Metric now={fg.goiNow} last={fg.goiLast} kind="ratio" tint={TINT["GP+OI%"]} label="GP+OI%" />
                       <Metric now={now.ff} last={last.ff} kind="count" tint={TINT.Footfall} label="Footfall" />
                       <Metric now={fg.bsNow} last={fg.bsLast} kind="count" tint={TINT.Basket} label="Basket" />
-                      <TargetCell v={tgt ? tgt.sales : null} kind="money" tint={TINT.Sales} start />
-                      <TargetCell v={tgt ? tgt.gpv : null} kind="money" tint={TINT.GPV} />
-                      <TargetCell v={tgt ? tgt.ff : null} kind="count" tint={TINT.Footfall} />
-                      <TargetCell v={fg.tgtBs} kind="count" tint={TINT.Basket} />
+                      <TargetTriple tgt={fg.tgtSales} ach={fg.tgtSalesAch} gap={fg.tgtSalesGap} kind="money" tint={TINT.Sales} start />
+                      <TargetTriple tgt={fg.tgtGpv} ach={fg.tgtGpvAch} gap={fg.tgtGpvGap} kind="money" tint={TINT.GPV} />
+                      <TargetTriple tgt={fg.tgtFf} ach={fg.tgtFfAch} gap={fg.tgtFfGap} kind="count" tint={TINT.Footfall} />
+                      <TargetTriple tgt={fg.tgtBs} ach={fg.tgtBsAch} gap={fg.tgtBsGap} kind="count" tint={TINT.Basket} />
                     </tr>
                   );
                 })}
@@ -500,10 +523,10 @@ function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
                     <Metric now={goi} last={goil} kind="ratio" tint={TINT["GP+OI%"]} label="GP+OI%" />
                     <Metric now={f} last={fl} kind="count" tint={TINT.Footfall} label="Footfall" />
                     <Metric now={bs} last={bsl} kind="count" tint={TINT.Basket} label="Basket" />
-                    <TargetCell v={ts} kind="money" tint={TINT.Sales} start />
-                    <TargetCell v={tg} kind="money" tint={TINT.GPV} />
-                    <TargetCell v={tf} kind="count" tint={TINT.Footfall} />
-                    <TargetCell v={tb} kind="count" tint={TINT.Basket} />
+                    <TargetTriple tgt={ts} ach={achSalesPct} gap={ts != null ? achOf.sales - ts : null} kind="money" tint={TINT.Sales} start />
+                    <TargetTriple tgt={tg} ach={achGpvPct} gap={tg != null ? achOf.gpv - tg : null} kind="money" tint={TINT.GPV} />
+                    <TargetTriple tgt={tf} ach={achFfPct} gap={tf != null ? achOf.ff - tf : null} kind="count" tint={TINT.Footfall} />
+                    <TargetTriple tgt={tb} ach={achBsPct} gap={tb != null && achOf.ff ? achOf.sales / achOf.ff - tb : null} kind="count" tint={TINT.Basket} />
                   </tr>
                 </tfoot>
               )}
