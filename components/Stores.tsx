@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import type { StoresData } from "@/lib/types";
+import type { DailyData, StoresData } from "@/lib/types";
 import { arrowOf, crOrDash, full, growth, pct, signedPct, titleCase, toneOfNum } from "@/lib/format";
-import { CMP_SHORT, CMP_WORD, type Cmp, dayLong, type StoreGroup, type StoreType, uniqSorted } from "@/lib/daily";
+import { CMP_SHORT, CMP_WORD, type Cmp, dayLong, storeKey, type StoreGroup, type StoreType, uniqSorted } from "@/lib/daily";
 
 type Kind = "money" | "count" | "ratio";
 
@@ -62,20 +62,24 @@ function TargetCell({ v, kind, tint, start }: { v: number | null; kind: "money" 
  *  The filters sit in a panel beside the table, as on the Category wise performance tab. */
 export default function Stores() {
   const [data, setData] = useState<StoresData | null>(null);
+  const [daily, setDaily] = useState<DailyData | null>(null);
 
   useEffect(() => {
     let live = true;
     import("@/data/stores.json").then((m) => {
       if (live) setData(m.default as unknown as StoresData);
     });
+    import("@/data/daily.json").then((m) => {
+      if (live) setDaily(m.default as unknown as DailyData);
+    });
     return () => { live = false; };
   }, []);
 
-  if (!data) return <p className="hint">Loading the store figures…</p>;
-  return <StoreTable data={data} />;
+  if (!data || !daily) return <p className="hint">Loading the store figures…</p>;
+  return <StoreTable data={data} daily={daily} />;
 }
 
-function StoreTable({ data }: { data: StoresData }) {
+function StoreTable({ data, daily }: { data: StoresData; daily: DailyData }) {
   const firstDate = data.days[0].date, lastDate = data.days[data.days.length - 1].date;
   const [from, setFrom] = useState<string>(firstDate);
   const [to, setTo] = useState<string>(lastDate);
@@ -123,8 +127,16 @@ function StoreTable({ data }: { data: StoresData }) {
       .sort((a, b) => b.now.sales - a.now.sales);
   }, [outlets, chosen, cmp, store, type, division, format, leader, zonal, search]);
 
-  // the totals of the outlets shown
-  const total = addSums(rows.map((x) => x.now)), totalLast = addSums(rows.map((x) => x.last));
+  // the totals: with no outlet filter, the Category wise figures of this store group and type (the same totals as that tab);
+  // otherwise the sum of the outlets shown
+  const key = storeKey(store, type);
+  const T = daily.groups[key].total, C = (cmp === "sply" ? daily.groups : daily.splmGroups)[key].total;
+  const sumAt = (a: (number | null)[]) => chosen.reduce((t, i) => t + (a[i] ?? 0), 0);
+  const dayNow: Sum = { sales: sumAt(T.sales), gpv: sumAt(T.gpv), ff: sumAt(T.ff), va: sumAt(T.valueAdj) };
+  const dayLast: Sum = { sales: sumAt(C.splySales), gpv: sumAt(C.splyGpv), ff: sumAt(C.splyFf), va: sumAt(C.splyValueAdj) };
+  const useDaily = !division && !format && !leader && !zonal && !search;
+  const total = useDaily ? dayNow : addSums(rows.map((x) => x.now));
+  const totalLast = useDaily ? dayLast : addSums(rows.map((x) => x.last));
   const s = total.sales, sl = totalLast.sales;
   const g = total.gpv, gl = totalLast.gpv;
   const f = total.ff, fl = totalLast.ff;
@@ -267,6 +279,7 @@ function StoreTable({ data }: { data: StoresData }) {
           {rows.length} {rows.length === 1 ? "outlet" : "outlets"} · {periodName}. Each outlet is compared with the same days {CMP_WORD[cmp]}.{" "}
           {chosen.length === 0 && "No days fall in this range; choose dates inside the data period."}
           {from > to && " The two dates were swapped, so the range runs from the earlier to the later date."}
+          {useDaily && " Totals are the Category wise figures for this store group, so they match that tab; the outlet rows come from the outlet files and can differ from the total by about 0.2% on GPV."}
           {" "}Targets from {data.targetFile}
           {noTarget > 0 && `; ${noTarget} ${noTarget === 1 ? "outlet has" : "outlets have"} no target in it`}.
         </p>
