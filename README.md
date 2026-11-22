@@ -43,6 +43,21 @@ The Overview reads the monthly snapshots. Its filters are Month, Store group, an
 
 GitHub Pages must be set to **Settings → Pages → Source: GitHub Actions**. With "Deploy from a branch", GitHub also publishes this README to the same address and can overwrite the dashboard.
 
+## Where it is published
+
+Every push goes to two repos: **kaziradin/SHWAPNO_SALES_REPORT** and **Shwapno-AI/bpr**. Each publishes the site with GitHub Pages (https://kaziradin.github.io/SHWAPNO_SALES_REPORT/ and https://shwapno-ai.github.io/bpr/), and either can also run on Coolify.
+
+## Deploy on Coolify
+
+The repo has a `Dockerfile` (it builds the static site with Node 22 and serves `out/` with nginx on port 80), an `nginx.conf` and a `.dockerignore`.
+
+1. In Coolify: **+ New → Application → Public or Private Repository** (GitHub App or deploy key for a private repo), and choose `Shwapno-AI/bpr` or `kaziradin/SHWAPNO_SALES_REPORT`, branch `main`.
+2. **Build pack: Dockerfile** (file `/Dockerfile`, base directory `/`).
+3. **Ports exposes: 80**. Add the domain you want under **Domains**; Coolify issues the HTTPS certificate.
+4. Turn on **Auto deploy** (webhook), so each push, including each `update.bat` data update, rebuilds the site.
+
+The site is served at the root of its domain. Only if it must sit under a path (for example `/bpr`), set the build argument `NEXT_BASE_PATH=/bpr`.
+
 ## Local development
 
 ```bash
