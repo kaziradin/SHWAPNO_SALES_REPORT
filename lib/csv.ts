@@ -47,6 +47,58 @@ export function tableToCsv(table: HTMLTableElement): string {
   return out.map((row) => Array.from({ length: width }, (_, i) => esc(row[i] ?? "")).join(",")).join("\r\n") + "\r\n";
 }
 
+/** The same table with each value and its change in separate columns, so Excel can add up, filter and compare them.
+ *  A body cell made of two blocks (a value on one line, its change on the next) becomes two columns: the value and the
+ *  change. The first three columns (the labels) stay single. A header cell for a day gets a second column, "<label> GR%".
+ *  Tables with spans fall back to tableToCsv. */
+export function tableToCsvSplit(table: HTMLTableElement): string {
+  const rows = [...table.rows];
+  const esc = (x: string) => (/[",\r\n]/.test(x) ? `"${x.replace(/"/g, '""')}"` : x);
+  const clean = (s: string) => s.replace(/[▲▼›]/g, "").replace(/−/g, "-").replace(/(\d),(?=\d{3}(?!\d))/g, "$1").replace(/\s+/g, " ").trim();
+  // every piece of a cell (a text line or a block), joined with " / "
+  const textOf = (cell: HTMLTableCellElement) => {
+    const parts = [...cell.childNodes].map((n) => (n.textContent ?? "").trim()).filter(Boolean);
+    const t = clean(parts.length ? parts.join(" / ") : (cell.textContent ?? ""));
+    return t === "–" ? "" : t;
+  };
+  const out: string[][] = [];
+  for (const tr of rows) {
+    const isHead = tr.parentElement?.tagName === "THEAD";
+    const line: string[] = [];
+    // a cell that spans columns occupies the columns after it as empty places
+    const slots: (HTMLTableCellElement | null)[] = [];
+    for (const cell of [...tr.cells]) {
+      slots.push(cell);
+      for (let k = 1; k < (cell.colSpan || 1); k++) slots.push(null);
+    }
+    slots.forEach((cell, i) => {
+      if (!cell) {
+        line.push(...(i < 3 ? [""] : ["", ""]));
+        return;
+      }
+      if (i < 3) {
+        line.push(textOf(cell));
+        return;
+      }
+      if (isHead) {
+        const label = textOf(cell);
+        line.push(label, label ? `${label} GR%` : "");
+        return;
+      }
+      const blocks = [...cell.children].filter((el) => el.tagName === "DIV");
+      if (blocks.length === 2) {
+        const value = clean(blocks[0].textContent ?? "");
+        line.push(value === "–" ? "" : value, clean(blocks[1].textContent ?? "").replace(/^–$/, ""));
+      } else {
+        line.push(textOf(cell), "");
+      }
+    });
+    out.push(line);
+  }
+  const width = Math.max(0, ...out.map((row) => row.length));
+  return out.map((row) => Array.from({ length: width }, (_, i) => esc(row[i] ?? "")).join(",")).join("\r\n") + "\r\n";
+}
+
 /** Saves CSV text as a file (with a byte-order mark, so Excel reads the text as UTF-8). */
 export function downloadCsv(filename: string, csv: string): void {
   const url = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));

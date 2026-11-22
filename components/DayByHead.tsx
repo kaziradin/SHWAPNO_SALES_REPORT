@@ -189,7 +189,7 @@ export default function DayByHead({ heads, totalF, detailRows, crpFf, days, cmpS
         ))}
       </div>
       <div className="ov-panel ov-table-panel">
-        <ExportCsv tableRef={tableRef} filename="day-by-head.csv" />
+        <ExportCsv tableRef={tableRef} filename="day-by-head.csv" split />
         <div className="ov-table-scroll">
           <table ref={tableRef} className="ov-table dh day-head-table">
             <caption>{scope}. Click a head&apos;s › to see its persons, and a person&apos;s › to see their categories.</caption>
