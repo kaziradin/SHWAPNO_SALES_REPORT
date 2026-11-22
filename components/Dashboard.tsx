@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useState } from "react";
-import type { Cat3Row, CrpFf, DailyData, DailyDetailData, DailyHead, DetailRow, HeadRow, Metrics, MonthOverview, Outlet, Report, SegmentKey, StoreKey } from "@/lib/types";
+import type { Cat3Row, CrpFf, DailyData, DailyDetailData, DailyHead, DetailRow, HeadRow, Metrics, MonthOverview, Report, SegmentKey, StoreKey } from "@/lib/types";
 import {
   abbrOf, arrowOf, crFmt, crOrDash, crSigned, diff, growth, int, longDate, monthName, pct, pp, roleName, signedPct, titleCase, toneOfNum,
 } from "@/lib/format";
@@ -14,7 +14,7 @@ import Daily from "./Daily";
 import Stores from "./Stores";
 import { WIDE, WideCells } from "./HeadMeasures";
 
-type Tab = "overview" | "heads" | "daily" | "stores" | "outlets";
+type Tab = "overview" | "heads" | "daily" | "stores";
 
 export default function Dashboard({ report, months, daily }: { report: Report; months: MonthOverview[]; daily: DailyData }) {
   const [cmp, setCmp] = useState<Cmp>("sply");
@@ -109,7 +109,6 @@ export default function Dashboard({ report, months, daily }: { report: Report; m
         {([
           ["daily", "Category wise performance"],
           ["stores", "Store wise performance"],
-          ["outlets", "Outlets & targets"],
         ] as [Tab, string][]).map(([k, label]) => (
           <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}>{label}</button>
         ))}
@@ -126,7 +125,6 @@ export default function Dashboard({ report, months, daily }: { report: Report; m
       {tab === "heads" && <Heads report={report} cmp={cmp} daily={daily} onCmp={setCmp} />}
       {tab === "daily" && <Daily daily={daily} />}
       {tab === "stores" && <Stores />}
-      {tab === "outlets" && <Outlets outlets={report.outlets} cmp={cmp} />}
 
       <p className="foot">
         Source: {tab === "daily" ? daily.sourceFile : report.sourceFile} · data extracted{" "}
@@ -1055,214 +1053,3 @@ function HeadDrill({ head, headSame, cat, seg, cmp, onCmp, onBack, personAll, pe
     </div>
   );
 }
-
-/* ------------------------------------------------------------------ outlets */
-
-const BANDS = [
-  { key: "hit", label: "At or above target", test: (a: number) => a >= 1, color: "var(--good)", icon: "✓" },
-  { key: "near", label: "90–100% of target", test: (a: number) => a >= 0.9 && a < 1, color: "var(--warn)", icon: "!" },
-  { key: "below", label: "Below 90% of target", test: (a: number) => a < 0.9, color: "var(--crit)", icon: "✕" },
-] as const;
-
-function achOf(o: Outlet) {
-  return o.target ? (o.achv ?? 0) / o.target : null;
-}
-function band(a: number | null) {
-  return a == null ? null : BANDS.find((b) => b.test(a)) ?? null;
-}
-
-function AchCell({ a }: { a: number | null }) {
-  const b = band(a);
-  return (
-    <div className="bar-cell">
-      <span>{pct(a)}</span>
-      <span className="track" aria-hidden>
-        <span className="fill" style={{ width: `${Math.min(100, (a ?? 0) * 100)}%`, background: b?.color ?? "var(--last)" }} />
-      </span>
-    </div>
-  );
-}
-
-function StatusPill({ a }: { a: number | null }) {
-  const b = band(a);
-  if (!b) return <span className="delta flat">–</span>;
-  return (
-    <span className="pill" title={b.label}>
-      <span className="dot" style={{ background: b.color }} />
-      {b.icon} {b.key === "hit" ? "On target" : b.key === "near" ? "Close" : "Behind"}
-    </span>
-  );
-}
-
-function rollup(outlets: Outlet[], by: "leader" | "zonal") {
-  const m = new Map<string, { name: string; n: number; target: number; achv: number; hit: number }>();
-  for (const o of outlets) {
-    const k = o[by] || "—";
-    const r = m.get(k) ?? { name: k, n: 0, target: 0, achv: 0, hit: 0 };
-    r.n++;
-    r.target += o.target ?? 0;
-    r.achv += o.achv ?? 0;
-    if ((achOf(o) ?? 0) >= 1) r.hit++;
-    m.set(k, r);
-  }
-  return [...m.values()].map((r) => ({ ...r, ach: r.target ? r.achv / r.target : null }));
-}
-
-function LeaderSummary({ outlets }: { outlets: Outlet[] }) {
-  const [by, setBy] = useState<"leader" | "zonal">("leader");
-  const rows = useMemo(() => rollup(outlets, by), [outlets, by]);
-  const { sorted, th } = useSort(rows, {
-    name: (r) => r.name, n: (r) => r.n, target: (r) => r.target, achv: (r) => r.achv, ach: (r) => r.ach, hit: (r) => r.hit,
-  }, { key: "ach", dir: -1 });
-  return (
-    <div className="card">
-      <div className="card-head">
-        <div>
-          <h2>Target achievement by {by === "leader" ? "leader" : "zonal manager"}</h2>
-          <p className="hint">Operations target, month to date. Click a column to sort.</p>
-        </div>
-        <div className="seg" role="group" aria-label="Group by">
-          <button aria-pressed={by === "leader"} onClick={() => setBy("leader")}>Leader</button>
-          <button aria-pressed={by === "zonal"} onClick={() => setBy("zonal")}>Zonal</button>
-        </div>
-      </div>
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              {th("name", by === "leader" ? "Leader" : "Zonal")}
-              {th("n", "Outlets")}
-              {th("target", "Target")}
-              {th("achv", "Achieved")}
-              {th("ach", "Achievement")}
-              {th("hit", "On target")}
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((r) => (
-              <tr key={r.name}>
-                <td>{r.name}</td>
-                <td>{r.n}</td>
-                <td>{crOrDash(r.target)}</td>
-                <td>{crOrDash(r.achv)}</td>
-                <td><AchCell a={r.ach} /></td>
-                <td>{r.hit} / {r.n}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-function Outlets({ outlets, cmp }: { outlets: Outlet[]; cmp: Cmp }) {
-  const s = CMP_LABEL[cmp].short;
-  const [q, setQ] = useState("");
-  const [leader, setLeader] = useState("");
-  const [zonal, setZonal] = useState("");
-  const [bandKey, setBandKey] = useState("");
-  const [limit, setLimit] = useState(100);
-
-  const leaders = useMemo(() => [...new Set(outlets.map((o) => o.leader).filter(Boolean))].sort(), [outlets]);
-  const zonals = useMemo(() => [...new Set(outlets.map((o) => o.zonal).filter(Boolean))].sort(), [outlets]);
-
-  const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    return outlets.filter((o) =>
-      (!needle || `${o.code} ${o.name}`.toLowerCase().includes(needle)) &&
-      (!leader || o.leader === leader) &&
-      (!zonal || o.zonal === zonal) &&
-      (!bandKey || band(achOf(o))?.key === bandKey));
-  }, [outlets, q, leader, zonal, bandKey]);
-
-  const salesG = (o: Outlet) => (cmp === "sply" ? growth(o.salesTy, o.salesLy) : growth(o.salesTm, o.salesLm));
-  const ffLast = (o: Outlet) => (cmp === "sply" ? o.ffLy : o.ffLm);
-  const { sorted, th } = useSort(filtered, {
-    name: (o) => o.code, leader: (o) => o.leader, zonal: (o) => o.zonal,
-    target: (o) => o.target, achv: (o) => o.achv, ach: (o) => achOf(o),
-    g: (o) => salesG(o), ff: (o) => o.ff, ffg: (o) => growth(o.ff, ffLast(o)), gp: (o) => o.gp,
-  }, { key: "ach", dir: 1 });
-
-  const counts = BANDS.map((b) => ({ ...b, n: outlets.filter((o) => band(achOf(o))?.key === b.key).length }));
-
-  return (
-    <>
-      <div className="dist">
-        {counts.map((b) => (
-          <button
-            key={b.key}
-            className="box"
-            style={{ textAlign: "left", cursor: "pointer", font: "inherit", color: "inherit", outline: bandKey === b.key ? "2px solid var(--this)" : undefined }}
-            onClick={() => setBandKey(bandKey === b.key ? "" : b.key)}
-            aria-pressed={bandKey === b.key}
-          >
-            <div className="n">{b.n}</div>
-            <div className="t"><span className="pill"><span className="dot" style={{ background: b.color }} />{b.icon}</span>{b.label}</div>
-          </button>
-        ))}
-      </div>
-
-      <div className="card">
-        <h2>Outlets</h2>
-        <p className="hint">
-          Target vs achievement (month to date). Growth compares same-day sales with the {CMP_LABEL[cmp].long}; outlets that did not trade then show “–”.
-        </p>
-        <div className="toolbar">
-          <input type="search" placeholder="Search code or outlet name" value={q} onChange={(e) => setQ(e.target.value)} />
-          <select value={leader} onChange={(e) => setLeader(e.target.value)} aria-label="Leader">
-            <option value="">All leaders</option>
-            {leaders.map((l) => <option key={l}>{l}</option>)}
-          </select>
-          <select value={zonal} onChange={(e) => setZonal(e.target.value)} aria-label="Zonal">
-            <option value="">All zonals</option>
-            {zonals.map((l) => <option key={l}>{l}</option>)}
-          </select>
-          <span className="count">{filtered.length} of {outlets.length} outlets</span>
-        </div>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                {th("name", "Outlet")}
-                {th("leader", "Leader", "l")}
-                {th("zonal", "Zonal", "l")}
-                {th("target", "Target")}
-                {th("achv", "Achieved")}
-                {th("ach", "Achievement")}
-                <th>Status</th>
-                {th("g", `Growth vs ${s}`)}
-                {th("ff", "Footfall")}
-                {th("ffg", `FF vs ${s}`)}
-                {th("gp", "GP %")}
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.slice(0, limit).map((o) => (
-                <tr key={o.code}>
-                  <td className="name" title={o.name}><span className="code">{o.code}</span>{o.name}</td>
-                  <td className="l">{o.leader}</td>
-                  <td className="l">{o.zonal}</td>
-                  <td>{crOrDash(o.target)}</td>
-                  <td>{crOrDash(o.achv)}</td>
-                  <td><AchCell a={achOf(o)} /></td>
-                  <td><StatusPill a={achOf(o)} /></td>
-                  <td><Delta v={salesG(o)} /></td>
-                  <td>{int(o.ff)}</td>
-                  <td><Delta v={growth(o.ff, ffLast(o))} /></td>
-                  <td>{pct(o.gp, 2)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {sorted.length > limit && (
-          <div className="more">
-            <button onClick={() => setLimit(limit + 200)}>Show more ({sorted.length - limit} left)</button>
-          </div>
-        )}
-      </div>
-    </>
-  );
-}
-
