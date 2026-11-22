@@ -51,7 +51,7 @@ export function tableToCsv(table: HTMLTableElement): string {
  *  A body cell made of two blocks (a value on one line, its change on the next) becomes two columns: the value and the
  *  change. The first three columns (the labels) stay single. A header cell for a day gets a second column, "<label> GR%".
  *  Tables with spans fall back to tableToCsv. */
-export function tableToCsvSplit(table: HTMLTableElement): string {
+export function tableToCsvSplit(table: HTMLTableElement, measure = ""): string {
   const rows = [...table.rows];
   const esc = (x: string) => (/[",\r\n]/.test(x) ? `"${x.replace(/"/g, '""')}"` : x);
   const clean = (s: string) => s.replace(/[▲▼›]/g, "").replace(/−/g, "-").replace(/(\d),(?=\d{3}(?!\d))/g, "$1").replace(/\s+/g, " ").trim();
@@ -81,8 +81,10 @@ export function tableToCsvSplit(table: HTMLTableElement): string {
         return;
       }
       if (isHead) {
+        // the measure (Sales, GPV, ...) goes in front of each day, so a download says what it holds
         const label = textOf(cell);
-        line.push(label, label ? `${label} GR%` : "");
+        const named = measure && label ? `${measure} ${label}` : label;
+        line.push(named, named ? `${named} GR%` : "");
         return;
       }
       const blocks = [...cell.children].filter((el) => el.tagName === "DIV");
